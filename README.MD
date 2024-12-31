@@ -1,6 +1,6 @@
 # Traveler's Journal
 
-A Minecraft mod that provides a server-wide journal system. The mod automatically updates journal books with server-defined content, making it perfect for sharing server lore, rules, or information with players.
+A Minecraft mod allows you to create a book that synchronizes content across all players who owns the book. This mod is perfect for welcoming players to your server,sharing server lore, rules, or information. 
 
 ## Features
 - Server-wide synchronized journal content

@@ -64,20 +64,57 @@ async function createGitHubRelease(version, jarPath, changelogContent) {
         const tempFile = path.join(__dirname, 'release-data.json');
         fs.writeFileSync(tempFile, JSON.stringify(releaseData));
 
-        // Create GitHub release using curl (with proper Windows path handling)
-        const curlCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/json" -d "@${tempFile.replace(/\\/g, '/')}" "https://api.github.com/repos/${process.env.GITHUB_REPO}/releases"`;
-        
-        const releaseResponse = await execAsync(curlCommand);
-        const release = JSON.parse(releaseResponse.stdout);
-        
-        // Upload asset (with proper Windows path handling)
-        const assetName = path.basename(jarPath);
-        const uploadCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/java-archive" --data-binary "@${jarPath.replace(/\\/g, '/')}" "${release.upload_url.replace('{?name,label}', `?name=${assetName}`)}"`; 
-        
-        await execAsync(uploadCommand);
-        
-        // Cleanup
-        fs.unlinkSync(tempFile);
+        try {
+            // Create GitHub release using curl
+            console.log('Creating GitHub release...');
+            const curlCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/json" -d "@${tempFile.replace(/\\/g, '/')}" "https://api.github.com/repos/${process.env.GITHUB_REPO}/releases"`;
+            
+            const { stdout, stderr } = await execAsync(curlCommand);
+            if (stderr) {
+                console.error('Curl stderr:', stderr);
+            }
+            
+            let release;
+            try {
+                release = JSON.parse(stdout);
+            } catch (e) {
+                console.error('Failed to parse GitHub API response:', stdout);
+                throw new Error('Invalid response from GitHub API');
+            }
+            
+            if (!release || !release.upload_url) {
+                console.error('Unexpected GitHub API response:', release);
+                throw new Error('GitHub API response missing upload_url');
+            }
+
+            // Upload asset
+            console.log('Uploading jar file...');
+            const assetName = path.basename(jarPath);
+            const uploadUrl = release.upload_url.replace('{?name,label}', `?name=${assetName}`);
+            const uploadCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/java-archive" --data-binary "@${jarPath.replace(/\\/g, '/')}" "${uploadUrl}"`;
+            
+            const { stdout: uploadStdout, stderr: uploadStderr } = await execAsync(uploadCommand);
+            if (uploadStderr) {
+                console.error('Upload stderr:', uploadStderr);
+            }
+            
+            try {
+                const uploadResponse = JSON.parse(uploadStdout);
+                if (!uploadResponse.browser_download_url) {
+                    throw new Error('Upload response missing download URL');
+                }
+                console.log(`Jar uploaded successfully: ${uploadResponse.browser_download_url}`);
+            } catch (e) {
+                console.error('Failed to parse upload response:', uploadStdout);
+                throw new Error('Invalid response from GitHub upload API');
+            }
+            
+        } finally {
+            // Cleanup temp file
+            if (fs.existsSync(tempFile)) {
+                fs.unlinkSync(tempFile);
+            }
+        }
         
         console.log(`GitHub release ${tag} created successfully with jar attachment!`);
     } catch (error) {
