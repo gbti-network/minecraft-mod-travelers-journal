@@ -4,7 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { getCurrentVersion, incrementVersion } from './utils/version-utils.js';
+import { getCurrentVersion, incrementVersion, updateVersion, revertVersion } from './utils/version-utils.js';
 import { buildJar } from './utils/build-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -13,6 +13,51 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 const execAsync = promisify(exec);
+
+async function verifyGitHubConfig() {
+    if (!process.env.GITHUB_TOKEN) {
+        throw new Error('GITHUB_TOKEN not set in .env file');
+    }
+    if (!process.env.GITHUB_REPO) {
+        throw new Error('GITHUB_REPO not set in .env file');
+    }
+    
+    // Test GitHub API access
+    console.log(`Verifying GitHub access for repository: ${process.env.GITHUB_REPO}`);
+    const apiUrl = `https://api.github.com/repos/${process.env.GITHUB_REPO}`;
+    console.log(`Testing API URL: ${apiUrl}`);
+    
+    const testCommand = `curl -s -i -H "Authorization: token ${process.env.GITHUB_TOKEN}" "${apiUrl}"`;
+    
+    try {
+        const { stdout, stderr } = await execAsync(testCommand);
+        if (stderr) {
+            console.error('Test API call stderr:', stderr);
+        }
+        
+        // Log the full response for debugging
+        console.log('API Response:', stdout);
+        
+        // Parse the response, skipping HTTP headers
+        const responseBody = stdout.split('\r\n\r\n').slice(-1)[0];
+        const response = JSON.parse(responseBody);
+        
+        if (response.message === 'Not Found') {
+            throw new Error(`Repository '${process.env.GITHUB_REPO}' not found. Please check GITHUB_REPO in .env`);
+        }
+        if (response.message === 'Bad credentials') {
+            throw new Error('Invalid GitHub token. Please check GITHUB_TOKEN in .env');
+        }
+        
+        console.log(`✓ GitHub repository verified: ${response.full_name}`);
+        return response.full_name; // Return the actual repo name from GitHub
+    } catch (error) {
+        if (error.message.includes('Not Found')) {
+            throw new Error(`Repository '${process.env.GITHUB_REPO}' not found. Please check GITHUB_REPO in .env`);
+        }
+        throw error;
+    }
+}
 
 async function getChangelogContent(version) {
     try {
@@ -41,7 +86,7 @@ async function getChangelogContent(version) {
     }
 }
 
-async function createGitHubRelease(version, jarPath, changelogContent) {
+async function createGitHubRelease(version, jarPath, changelogContent, repoFullName) {
     try {
         const tag = `v${version}`;
         
@@ -67,7 +112,7 @@ async function createGitHubRelease(version, jarPath, changelogContent) {
         try {
             // Create GitHub release using curl
             console.log('Creating GitHub release...');
-            const curlCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/json" -d "@${tempFile.replace(/\\/g, '/')}" "https://api.github.com/repos/${process.env.GITHUB_REPO}/releases"`;
+            const curlCommand = `curl -s -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/json" -d "@${tempFile.replace(/\\/g, '/')}" "https://api.github.com/repos/${repoFullName}/releases"`;
             
             const { stdout, stderr } = await execAsync(curlCommand);
             if (stderr) {
@@ -77,6 +122,9 @@ async function createGitHubRelease(version, jarPath, changelogContent) {
             let release;
             try {
                 release = JSON.parse(stdout);
+                if (release.message) {
+                    throw new Error(`GitHub API error: ${release.message}`);
+                }
             } catch (e) {
                 console.error('Failed to parse GitHub API response:', stdout);
                 throw new Error('Invalid response from GitHub API');
@@ -91,7 +139,7 @@ async function createGitHubRelease(version, jarPath, changelogContent) {
             console.log('Uploading jar file...');
             const assetName = path.basename(jarPath);
             const uploadUrl = release.upload_url.replace('{?name,label}', `?name=${assetName}`);
-            const uploadCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/java-archive" --data-binary "@${jarPath.replace(/\\/g, '/')}" "${uploadUrl}"`;
+            const uploadCommand = `curl -s -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/java-archive" --data-binary "@${jarPath.replace(/\\/g, '/')}" "${uploadUrl}"`;
             
             const { stdout: uploadStdout, stderr: uploadStderr } = await execAsync(uploadCommand);
             if (uploadStderr) {
@@ -124,9 +172,14 @@ async function createGitHubRelease(version, jarPath, changelogContent) {
 }
 
 async function deploy() {
+    const originalVersion = getCurrentVersion();
+    let newVersion;
+    
     try {
-        const currentVersion = getCurrentVersion();
-        console.log(`Current version: ${currentVersion}`);
+        // First verify GitHub configuration
+        const repoFullName = await verifyGitHubConfig();
+        
+        console.log(`Current version: ${originalVersion}`);
         
         // Get release type from command line args
         const releaseType = process.argv[2] || 'patch';
@@ -135,7 +188,7 @@ async function deploy() {
         }
         
         // Increment version (without build number)
-        const newVersion = incrementVersion(currentVersion, releaseType);
+        newVersion = incrementVersion(originalVersion, releaseType);
         console.log(`New version will be: ${newVersion}`);
         
         // Get confirmation
@@ -156,6 +209,9 @@ async function deploy() {
             });
         });
 
+        // Update version in files
+        updateVersion(newVersion);
+
         // Get changelog content
         const changelogContent = await getChangelogContent(newVersion);
         if (!changelogContent) {
@@ -167,13 +223,36 @@ async function deploy() {
         console.log(`Built jar: ${jarPath}`);
         
         // Create GitHub release with jar
-        await createGitHubRelease(newVersion, jarPath, changelogContent);
+        await createGitHubRelease(newVersion, jarPath, changelogContent, repoFullName);
         
         console.log(' Release completed successfully!');
         console.log(`Version: ${newVersion}`);
         
     } catch (error) {
         console.error(' Release failed:', error.message);
+        
+        // Revert version if we had updated it
+        if (newVersion && getCurrentVersion() === newVersion) {
+            console.log(`\nReverting version back to ${originalVersion}...`);
+            try {
+                revertVersion(originalVersion);
+                
+                // Try to delete the tag if it was created
+                try {
+                    await execAsync(`git tag -d v${newVersion}`);
+                    await execAsync(`git push origin :refs/tags/v${newVersion}`);
+                    console.log(`Deleted tag v${newVersion}`);
+                } catch (tagError) {
+                    // Tag might not exist, ignore error
+                }
+                
+                console.log('Version reverted successfully');
+            } catch (revertError) {
+                console.error('Failed to revert version:', revertError.message);
+                console.error('Manual intervention may be required');
+            }
+        }
+        
         process.exit(1);
     }
 }

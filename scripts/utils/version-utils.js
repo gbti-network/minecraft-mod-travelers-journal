@@ -77,3 +77,71 @@ export function updateVersionInGradle(version, includeBuildNumber = false) {
     fs.writeFileSync(gradlePropertiesPath, gradleContent);
     return version;
 }
+
+/**
+ * Updates the version in all necessary files
+ * @param {string} version - The version to set
+ */
+export function updateVersion(version) {
+    // Update gradle.properties
+    const gradlePropertiesPath = path.join(process.cwd(), 'gradle.properties');
+    let gradleContent = fs.readFileSync(gradlePropertiesPath, 'utf8');
+    gradleContent = gradleContent.replace(
+        /mod_version\s*=\s*.+/,
+        `mod_version=${version}`
+    );
+    fs.writeFileSync(gradlePropertiesPath, gradleContent);
+
+    // Update changelog.md
+    const changelogPath = path.join(process.cwd(), '.product', 'changelog.md');
+    let changelogContent = fs.readFileSync(changelogPath, 'utf8');
+    const lines = changelogContent.split('\n');
+    let newLines = [];
+    let foundVersion = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!foundVersion && line.startsWith('## [')) {
+            newLines.push(`## [${version}]`);
+            foundVersion = true;
+        } else {
+            newLines.push(line);
+        }
+    }
+
+    fs.writeFileSync(changelogPath, newLines.join('\n'));
+}
+
+/**
+ * Reverts the version in all necessary files
+ * @param {string} version - The version to revert to
+ */
+export function revertVersion(version) {
+    // Update gradle.properties
+    const gradlePropertiesPath = path.join(process.cwd(), 'gradle.properties');
+    let gradleContent = fs.readFileSync(gradlePropertiesPath, 'utf8');
+    gradleContent = gradleContent.replace(
+        /mod_version\s*=\s*.+/,
+        `mod_version=${version}`
+    );
+    fs.writeFileSync(gradlePropertiesPath, gradleContent);
+
+    // Update changelog.md
+    const changelogPath = path.join(process.cwd(), '.product', 'changelog.md');
+    let changelogContent = fs.readFileSync(changelogPath, 'utf8');
+    const lines = changelogContent.split('\n');
+    let newLines = [];
+    let foundVersion = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!foundVersion && line.startsWith('## [')) {
+            newLines.push(`## [${version}]`);
+            foundVersion = true;
+        } else {
+            newLines.push(line);
+        }
+    }
+
+    fs.writeFileSync(changelogPath, newLines.join('\n'));
+}
