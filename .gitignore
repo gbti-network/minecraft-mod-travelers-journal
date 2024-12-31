@@ -42,3 +42,4 @@ replay_*.log
 scripts/.env
 node_modules/
 package-lock.json
+travelers_journal.jar
