@@ -4,10 +4,10 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { getCurrentVersion, incrementVersion, updateVersionInGradle } from './utils/version-utils.js';
+import { getCurrentVersion, incrementVersion } from './utils/version-utils.js';
+import { buildJar } from './utils/build-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.join(__dirname, '..');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -41,31 +41,6 @@ async function getChangelogContent(version) {
     }
 }
 
-async function buildJar(version) {
-    console.log(' Building jar...');
-    
-    // Update version in gradle.properties (without build number)
-    updateVersionInGradle(version, false);
-    
-    // Run Gradle build
-    await execAsync('gradlew.bat build', { stdio: 'inherit', cwd: PROJECT_ROOT });
-    
-    // Find the built jar
-    const BUILD_DIR = path.join(PROJECT_ROOT, 'build', 'libs');
-    const files = fs.readdirSync(BUILD_DIR);
-    const jarFile = files.find(file => 
-        !file.includes('-sources') && 
-        !file.includes('-dev') &&
-        file.endsWith('.jar')
-    );
-    
-    if (!jarFile) {
-        throw new Error('Could not find built jar file');
-    }
-    
-    return path.join(BUILD_DIR, jarFile);
-}
-
 async function createGitHubRelease(version, jarPath, changelogContent) {
     try {
         const tag = `v${version}`;
@@ -89,22 +64,15 @@ async function createGitHubRelease(version, jarPath, changelogContent) {
         const tempFile = path.join(__dirname, 'release-data.json');
         fs.writeFileSync(tempFile, JSON.stringify(releaseData));
 
-        // Create GitHub release using curl with file attachment
-        const curlCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" \\
-            -H "Content-Type: application/json" \\
-            -d "@${tempFile}" \\
-            https://api.github.com/repos/${process.env.GITHUB_REPO}/releases`;
+        // Create GitHub release using curl (with proper Windows path handling)
+        const curlCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/json" -d "@${tempFile.replace(/\\/g, '/')}" "https://api.github.com/repos/${process.env.GITHUB_REPO}/releases"`;
         
         const releaseResponse = await execAsync(curlCommand);
         const release = JSON.parse(releaseResponse.stdout);
         
-        // Upload asset
+        // Upload asset (with proper Windows path handling)
         const assetName = path.basename(jarPath);
-        const uploadCommand = `curl -X POST \\
-            -H "Authorization: token ${process.env.GITHUB_TOKEN}" \\
-            -H "Content-Type: application/java-archive" \\
-            --data-binary "@${jarPath}" \\
-            "${release.upload_url.replace('{?name,label}', '?name=' + assetName)}"`;
+        const uploadCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/java-archive" --data-binary "@${jarPath.replace(/\\/g, '/')}" "${release.upload_url.replace('{?name,label}', `?name=${assetName}`)}"`; 
         
         await execAsync(uploadCommand);
         
@@ -119,7 +87,6 @@ async function createGitHubRelease(version, jarPath, changelogContent) {
 }
 
 async function deploy() {
-    let backups;
     try {
         const currentVersion = getCurrentVersion();
         console.log(`Current version: ${currentVersion}`);
@@ -158,8 +125,8 @@ async function deploy() {
             throw new Error('No changelog content found for this version');
         }
         
-        // Build jar
-        const jarPath = await buildJar(newVersion);
+        // Build jar (without build number)
+        const jarPath = await buildJar(newVersion, false);
         console.log(`Built jar: ${jarPath}`);
         
         // Create GitHub release with jar
