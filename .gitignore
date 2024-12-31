@@ -25,15 +25,12 @@ bin/
 .project
 
 # macos
-
 *.DS_Store
 
 # fabric
-
 run/
 
 # java
-
 hs_err_*.log
 replay_*.log
 *.hprof
@@ -43,3 +40,6 @@ scripts/.env
 node_modules/
 package-lock.json
 travelers_journal.jar
+
+# gbti
+.product/assets

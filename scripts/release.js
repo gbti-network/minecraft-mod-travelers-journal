@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { getCurrentVersion, incrementVersion, updateVersion, revertVersion } from './utils/version-utils.js';
-import { buildJar } from './utils/build-utils.js';
+import { buildJar, manageProjectJars } from './utils/build-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -174,6 +174,7 @@ async function createGitHubRelease(version, jarPath, changelogContent, repoFullN
 async function deploy() {
     const originalVersion = getCurrentVersion();
     let newVersion;
+    let builtJarPath;
     
     try {
         // First verify GitHub configuration
@@ -219,11 +220,14 @@ async function deploy() {
         }
         
         // Build jar (without build number)
-        const jarPath = await buildJar(newVersion, false);
-        console.log(`Built jar: ${jarPath}`);
+        builtJarPath = await buildJar(newVersion, false);
+        console.log(`Built jar: ${builtJarPath}`);
+        
+        // Copy jar to project root
+        const projectJarPath = manageProjectJars(builtJarPath);
         
         // Create GitHub release with jar
-        await createGitHubRelease(newVersion, jarPath, changelogContent, repoFullName);
+        await createGitHubRelease(newVersion, projectJarPath, changelogContent, repoFullName);
         
         console.log(' Release completed successfully!');
         console.log(`Version: ${newVersion}`);

@@ -92,3 +92,30 @@ export async function copyToServer(jarPath) {
     console.log('📋 Copying new version to server...');
     fs.copyFileSync(jarPath, path.join(SERVER_MODS_DIR, path.basename(jarPath)));
 }
+
+/**
+ * Manages jar files in the project root directory
+ * @param {string} jarPath - Path to the new jar file
+ * @returns {string} Path to the copied jar file in project root
+ */
+export function manageProjectJars(jarPath) {
+    console.log('🗑️ Cleaning project root jars...');
+    
+    // Delete existing jar files in project root
+    const files = fs.readdirSync(PROJECT_ROOT);
+    for (const file of files) {
+        if (file.startsWith('travelers-journal') && file.endsWith('.jar')) {
+            const filePath = path.join(PROJECT_ROOT, file);
+            fs.unlinkSync(filePath);
+            console.log(`   Deleted: ${file}`);
+        }
+    }
+    
+    // Copy new jar to project root
+    const jarName = path.basename(jarPath);
+    const targetPath = path.join(PROJECT_ROOT, jarName);
+    fs.copyFileSync(jarPath, targetPath);
+    console.log(`📋 Copied jar to project root: ${jarName}`);
+    
+    return targetPath;
+}
