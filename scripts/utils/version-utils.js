@@ -22,30 +22,21 @@ export function getBuildNumber() {
 }
 
 export function incrementVersion(currentVersion, versionType) {
-    const versionParts = currentVersion.split('.').map(Number);
-    // Ensure we have 4 parts, adding build number if missing
-    while (versionParts.length < 4) {
-        versionParts.push(0);
-    }
+    // Get only major.minor.patch parts
+    const versionParts = currentVersion.split('.').slice(0, 3).map(Number);
     
     switch (versionType) {
         case 'major':
             versionParts[0]++;
             versionParts[1] = 0;
             versionParts[2] = 0;
-            // Keep build number
             break;
         case 'minor':
             versionParts[1]++;
             versionParts[2] = 0;
-            // Keep build number
             break;
         case 'patch':
             versionParts[2]++;
-            // Keep build number
-            break;
-        case 'build':
-            versionParts[3]++;
             break;
     }
     
@@ -59,5 +50,30 @@ export function getCurrentVersion() {
     if (!versionMatch) {
         throw new Error('Could not find version in gradle.properties');
     }
-    return versionMatch[1].trim();
+    // Return only major.minor.patch parts
+    return versionMatch[1].trim().split('.').slice(0, 3).join('.');
+}
+
+export function getFullVersion() {
+    const version = getCurrentVersion();
+    const buildNumber = getBuildNumber();
+    return `${version}.${buildNumber}`;
+}
+
+export function updateVersionInGradle(version, includeBuildNumber = false) {
+    const gradlePropertiesPath = path.join(process.cwd(), 'gradle.properties');
+    let gradleContent = fs.readFileSync(gradlePropertiesPath, 'utf8');
+    
+    if (includeBuildNumber) {
+        const buildNumber = getBuildNumber();
+        version = `${version}.${buildNumber}`;
+    }
+    
+    gradleContent = gradleContent.replace(
+        /mod_version\s*=\s*.+/,
+        `mod_version=${version}`
+    );
+    
+    fs.writeFileSync(gradlePropertiesPath, gradleContent);
+    return version;
 }

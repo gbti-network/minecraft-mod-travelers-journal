@@ -4,36 +4,15 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { getCurrentVersion } from './utils/version-utils.js';
+import { getCurrentVersion, incrementVersion, updateVersionInGradle } from './utils/version-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.join(__dirname, '..');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 const execAsync = promisify(exec);
-
-function incrementVersion(currentVersion, versionType) {
-    // Get the first 3 parts of the version number
-    const versionParts = currentVersion.split('.').slice(0, 3).map(Number);
-    
-    switch (versionType) {
-        case 'major':
-            versionParts[0]++;
-            versionParts[1] = 0;
-            versionParts[2] = 0;
-            break;
-        case 'minor':
-            versionParts[1]++;
-            versionParts[2] = 0;
-            break;
-        case 'patch':
-            versionParts[2]++;
-            break;
-    }
-    
-    return versionParts.join('.');
-}
 
 async function getChangelogContent(version) {
     try {
@@ -62,7 +41,32 @@ async function getChangelogContent(version) {
     }
 }
 
-async function createGitHubRelease(version, changelogContent) {
+async function buildJar(version) {
+    console.log(' Building jar...');
+    
+    // Update version in gradle.properties (without build number)
+    updateVersionInGradle(version, false);
+    
+    // Run Gradle build
+    await execAsync('gradlew.bat build', { stdio: 'inherit', cwd: PROJECT_ROOT });
+    
+    // Find the built jar
+    const BUILD_DIR = path.join(PROJECT_ROOT, 'build', 'libs');
+    const files = fs.readdirSync(BUILD_DIR);
+    const jarFile = files.find(file => 
+        !file.includes('-sources') && 
+        !file.includes('-dev') &&
+        file.endsWith('.jar')
+    );
+    
+    if (!jarFile) {
+        throw new Error('Could not find built jar file');
+    }
+    
+    return path.join(BUILD_DIR, jarFile);
+}
+
+async function createGitHubRelease(version, jarPath, changelogContent) {
     try {
         const tag = `v${version}`;
         
@@ -72,7 +76,7 @@ async function createGitHubRelease(version, changelogContent) {
         await execAsync(`git commit -m "Release ${tag}"`);
         await execAsync('git push origin develop --tags');
 
-        // Create GitHub release
+        // Create GitHub release with jar attachment
         const releaseData = {
             tag_name: tag,
             name: `Release ${tag}`,
@@ -85,56 +89,33 @@ async function createGitHubRelease(version, changelogContent) {
         const tempFile = path.join(__dirname, 'release-data.json');
         fs.writeFileSync(tempFile, JSON.stringify(releaseData));
 
-        // Create GitHub release using curl
-        const curlCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" -H "Content-Type: application/json" -d "@${tempFile}" https://api.github.com/repos/${process.env.GITHUB_REPO}/releases`;
-        await execAsync(curlCommand);
+        // Create GitHub release using curl with file attachment
+        const curlCommand = `curl -X POST -H "Authorization: token ${process.env.GITHUB_TOKEN}" \\
+            -H "Content-Type: application/json" \\
+            -d "@${tempFile}" \\
+            https://api.github.com/repos/${process.env.GITHUB_REPO}/releases`;
+        
+        const releaseResponse = await execAsync(curlCommand);
+        const release = JSON.parse(releaseResponse.stdout);
+        
+        // Upload asset
+        const assetName = path.basename(jarPath);
+        const uploadCommand = `curl -X POST \\
+            -H "Authorization: token ${process.env.GITHUB_TOKEN}" \\
+            -H "Content-Type: application/java-archive" \\
+            --data-binary "@${jarPath}" \\
+            "${release.upload_url.replace('{?name,label}', '?name=' + assetName)}"`;
+        
+        await execAsync(uploadCommand);
         
         // Cleanup
         fs.unlinkSync(tempFile);
         
-        console.log(`GitHub release ${tag} created successfully!`);
+        console.log(`GitHub release ${tag} created successfully with jar attachment!`);
     } catch (error) {
         console.error('Failed to create GitHub release:', error);
         throw error;
     }
-}
-
-async function updateVersionInFiles(newVersion) {
-    // Update gradle.properties
-    const gradlePropertiesPath = path.join(process.cwd(), 'gradle.properties');
-    let gradleContent = fs.readFileSync(gradlePropertiesPath, 'utf8');
-    
-    // Update version and reset build number
-    gradleContent = gradleContent.replace(
-        /mod_version\s*=\s*.+/,
-        `mod_version=${newVersion}`
-    );
-    gradleContent = gradleContent.replace(
-        /build_number\s*=\s*.+/,
-        'build_number=1'
-    );
-    
-    fs.writeFileSync(gradlePropertiesPath, gradleContent);
-}
-
-async function backupFiles() {
-    const filesToBackup = [
-        path.join(process.cwd(), 'gradle.properties'),
-        path.join(process.cwd(), '.product', 'changelog.md')
-    ];
-    
-    const backups = {};
-    for (const file of filesToBackup) {
-        backups[file] = fs.readFileSync(file, 'utf8');
-    }
-    return backups;
-}
-
-async function revertFiles(backups) {
-    for (const [file, content] of Object.entries(backups)) {
-        fs.writeFileSync(file, content, 'utf8');
-    }
-    console.log('Reverted files to original state');
 }
 
 async function deploy() {
@@ -149,11 +130,8 @@ async function deploy() {
             throw new Error('Invalid release type. Use: major, minor, or patch');
         }
         
-        // Get base version (first 3 parts)
-        const baseVersion = currentVersion.split('.').slice(0, 3).join('.');
-        
-        // Increment version
-        const newVersion = incrementVersion(baseVersion, releaseType);
+        // Increment version (without build number)
+        const newVersion = incrementVersion(currentVersion, releaseType);
         console.log(`New version will be: ${newVersion}`);
         
         // Get confirmation
@@ -174,49 +152,26 @@ async function deploy() {
             });
         });
 
-        // Backup files before making any changes
-        backups = await backupFiles();
-        console.log('Created backup of version files');
-        
-        // Update version in files
-        await updateVersionInFiles(newVersion);
-        console.log('Updated version in files');
-        
         // Get changelog content
         const changelogContent = await getChangelogContent(newVersion);
         if (!changelogContent) {
             throw new Error('No changelog content found for this version');
         }
         
-        // Create GitHub release
-        await createGitHubRelease(newVersion, changelogContent);
+        // Build jar
+        const jarPath = await buildJar(newVersion);
+        console.log(`Built jar: ${jarPath}`);
+        
+        // Create GitHub release with jar
+        await createGitHubRelease(newVersion, jarPath, changelogContent);
         
         console.log(' Release completed successfully!');
         console.log(`Version: ${newVersion}`);
         
     } catch (error) {
         console.error(' Release failed:', error.message);
-        if (backups) {
-            console.log('Attempting to revert changes...');
-            try {
-                await revertFiles(backups);
-                // Remove the tag if it was created
-                const newVersion = getCurrentVersion();
-                try {
-                    await execAsync(`git tag -d v${newVersion}`);
-                    await execAsync(`git push origin :refs/tags/v${newVersion}`);
-                    console.log('Removed version tag');
-                } catch (tagError) {
-                    // Tag might not exist, ignore error
-                }
-            } catch (revertError) {
-                console.error('Failed to revert changes:', revertError.message);
-                console.error('Manual intervention may be required');
-            }
-        }
         process.exit(1);
     }
 }
 
-// Run the deployment
 deploy();

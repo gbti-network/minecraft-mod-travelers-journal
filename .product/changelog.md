@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.2.1]
+## [1.2.2]
 - Added support for legacy book titles
 - Added debugging logging system that can be enabled/disabled
 - Initial release with basic journal functionality
