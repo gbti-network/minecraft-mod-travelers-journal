@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "travelers-journal",
+  "version": "${version}",
+  "name": "Traveler's Journal",
+  "description": "A Minecraft mod that adds a server-wide journal, perfect for server lore, rules, or information sharing.",
+  "authors": [
+    "gbti-network"
+  ],
+  "contributors": [
+    "DrarkaDev",
+    "atwellpub"
+  ],
+  "contact": {
+    "homepage": "https://fabricmc.net/",
+    "sources": "https://github.com/FabricMC/fabric-example-mod"
+  },
+  "license": "MIT",
+  "icon": "assets/travelers-journal/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.gbti.TravelersJournal"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.5",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
