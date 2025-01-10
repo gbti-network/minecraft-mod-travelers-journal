@@ -102,7 +102,8 @@ async function createGitHubRelease(version, jarPath, changelogContent, repoFullN
             name: `Release ${tag}`,
             body: changelogContent || '',
             draft: false,
-            prerelease: false
+            prerelease: false,
+            target_commitish: 'master' // Explicitly set release target to master branch
         };
 
         // Write release data to temp file
@@ -156,6 +157,15 @@ async function createGitHubRelease(version, jarPath, changelogContent, repoFullN
                 console.error('Failed to parse upload response:', uploadStdout);
                 throw new Error('Invalid response from GitHub upload API');
             }
+
+            // Update master branch after successful release
+            console.log('Updating master branch...');
+            await execAsync('git checkout master');
+            await execAsync('git merge develop');
+            await execAsync('git push origin master');
+            
+            // Switch back to develop branch
+            await execAsync('git checkout develop');
             
         } finally {
             // Cleanup temp file
@@ -165,8 +175,19 @@ async function createGitHubRelease(version, jarPath, changelogContent, repoFullN
         }
         
         console.log(`GitHub release ${tag} created successfully with jar attachment!`);
+        console.log('Master branch has been updated with the latest release.');
     } catch (error) {
         console.error('Failed to create GitHub release:', error);
+        
+        // Enhanced error handling for branch operations
+        if (error.message.includes('git')) {
+            console.error('Git operation failed. You may need to manually:');
+            console.error('1. git checkout master');
+            console.error('2. git merge develop');
+            console.error('3. git push origin master');
+            console.error('4. git checkout develop');
+        }
+        
         throw error;
     }
 }

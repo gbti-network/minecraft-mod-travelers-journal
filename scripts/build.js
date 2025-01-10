@@ -12,6 +12,9 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 // Configuration
 const MOD_NAME = 'travelers-journal';
 const SERVER_MODS_DIR = 'D:\\_Outfits\\GBTI\\MinecraftServer\\.server\\mods';
+if (!fs.existsSync(SERVER_MODS_DIR)) {
+    fs.mkdirSync(SERVER_MODS_DIR, { recursive: true });
+}
 const BUILD_DIR = path.join(PROJECT_ROOT, 'build', 'libs');
 
 console.log('🚀 Starting build process...');

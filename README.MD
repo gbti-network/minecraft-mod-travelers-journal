@@ -1,24 +1,28 @@
-# Traveler's Journal
+# 📖 Traveler's Journal
 
-A Minecraft mod allows you to create a book that synchronizes content across all players who owns the book. This mod is perfect for welcoming players to your server,sharing server lore, rules, or information. 
+A Minecraft mod that provides players with a special journal that updates its contents dynamically. Built with Fabric for Minecraft 1.21.1.
 
-## Features
-- Server-wide synchronized journal content
-- Automatic journal updates when players use their books
-- Customizable journal title and author
-- Option to give journal to new players
-- Support for legacy book titles for compatibility
-- Debug logging for troubleshooting
+## ✨ Features
 
-## Installation
-1. Install Fabric for Minecraft 1.21.1
-2. Place the mod jar in your mods folder
-3. Create the config directory: `config/travelers-journal/`
-4. Start the server/game
+- Dynamic journal content that updates when used
+- Automatic distribution to new players
+- Server-side implementation for multiplayer compatibility
+- Customizable content through configuration
+- Real-time preview system for journal formatting
 
-## Configuration
-The mod can be configured by editing `config/travelers-journal/config.txt`:
+## 🚀 Installation
 
+1. Install [Fabric Loader](https://fabricmc.net/use/)
+2. Download the latest version of Traveler's Journal from the releases page
+3. Place the .jar file in your server's `mods` folder
+4. Install the required dependencies:
+   - Fabric API
+
+## 🔧 Configuration
+
+The mod can be configured through files in the `config/travelers-journal/` directory:
+
+### Basic Settings (`config.txt`)
 ```properties
 title=Traveler's Journal
 author=Server
@@ -27,51 +31,66 @@ debug_logging=false
 legacy_titles=Traveller's Journal,Travelers Journal
 ```
 
-### Configuration Options
-- `title`: The title that appears on new journal books
-- `author`: The author name that appears on journal books
-- `give_at_spawn`: If true, gives new players a journal when they first join
-- `debug_logging`: Enable detailed logging for troubleshooting
-- `legacy_titles`: Comma-separated list of alternate titles that should be recognized as valid journals (useful for compatibility with existing books)
-
 ### Journal Content
-The journal's content is stored in `config/travelers-journal/travelers_journal.md` and supports standard Minecraft text formatting codes:
-- `§0` through `§9`, `§a` through `§f`: Color codes
-- `§k`: Obfuscated
-- `§l`: Bold
-- `§m`: Strikethrough
-- `§n`: Underline
-- `§o`: Italic
-- `§r`: Reset
+Create or edit `config/travelers-journal/travelers_journal.md` to set your journal's content. The mod supports:
 
-### Preview System
-The mod includes a web-based preview system to help you visualize how your journal content will appear in-game. To use the preview:
+- Markdown-style formatting:
+  - Bold: `**text**`
+  - Italic: `*text*`
+  - Underline: `_text_`
+- Color codes: `<color>text<>` where color is one of:
+  - `black`, `dark_blue`, `dark_green`, `dark_aqua`
+  - `dark_red`, `dark_purple`, `gold`, `gray`
+  - `dark_gray`, `blue`, `green`, `aqua`
+  - `red`, `light_purple`, `yellow`, `white`
+- Page breaks: Use `[page]` to start a new page
 
-1. Open `src/main/resources/preview/index.html` in your web browser
-2. Enter your journal content in the left panel
-3. See a real-time preview of how it will look in-game on the right
+### 📝 Preview Your Journal
+
+After installing the mod, you can preview how your journal will look in-game:
+
+1. Navigate to `config/travelers-journal/preview/`
+2. Open `index.html` in your web browser
+3. Edit your journal content in the left panel
+4. See a real-time preview on the right
 
 The preview supports:
-- Page breaks using `[page]` markers
+- Page breaks with `[page]`
 - Markdown-style formatting:
   - Bold: `**text**`
   - Italic: `*text*`
   - Underline: `_text_`
 - Color codes: `<c>text<>` where c is 0-9 or a-f
-- Bullet points using `- ` at the start of a line
+- Bullet points: Start a line with `- `
 
-This makes it easy to format and test your journal content before adding it to the server.
+This makes it easy to format and test your journal content before players see it in-game!
 
-## File Structure
-- **`config/travelers-journal/`**: Configuration directory
-  - **`config.txt`**: Mod configuration file
-  - **`travelers_journal.md`**: Journal content file
-  - **`joinlist.txt`**: List of players who have received journals
+## 🤝 Support
 
-## Building from Source
-1. Clone the repository
-2. Run `npm run build`
-3. Find the built jar in `.server/mods`
+### Join the GBTI Network! 🎮 🚀 💻
+The GBTI Network is more than just a community - it's a thriving ecosystem of developers, gamers, and creators! Our members enjoy:
 
-## License
-MIT License - Feel free to use this mod in modpacks and modify it as needed.
+- 🎮 Access to our private Minecraft server
+- 💻 Exclusive development tools and resources
+- 📚 Private repositories and code libraries
+- 👥 Active Discord community for collaboration
+- 🌟 Member directory listing to showcase your work
+- 🤝 Co-op opportunities and project partnerships
+- 🎯 Early access to new features and tools
+
+Support our work by becoming a [GBTI Network member](https://gbti.network/membership/).
+
+### Other ways to Support:
+
+- 🌟 Star us on [GitHub](https://github.com/gbti-network/minecraft-mod-travelers-journal)
+- 🐛 Report issues on our [Issue Tracker](https://github.com/gbti-network/minecraft-mod-travelers-journal/issues)
+- 💡 Contribute through [Pull Requests](https://github.com/gbti-network/minecraft-mod-travelers-journal/pulls)
+- ⭐ Rate us on [Modrinth](#)
+
+## 📄 License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**Note**: For development and contribution guidelines, please see [CONTRIBUTING.md](CONTRIBUTING.md)

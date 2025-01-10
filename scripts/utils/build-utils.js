@@ -76,7 +76,7 @@ export async function buildJar(version, includeBuildNumber = false) {
  * @param {string} jarPath - Path to the jar file
  */
 export async function copyToServer(jarPath) {
-    const SERVER_MODS_DIR = path.join(PROJECT_ROOT, '..', '.server', 'mods');
+    const SERVER_MODS_DIR = 'D:\\_Outfits\\GBTI\\MinecraftServer\\.server\\mods';
     
     // Delete old version from server mods
     console.log('🗑️ Removing old version from server...');

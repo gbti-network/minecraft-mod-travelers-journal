@@ -1,5 +1,9 @@
 # Changelog
 
+
+## [1.2.7]
+- Cleaning up dev files and folders
+
 ## [1.2.6]
 - Added support for legacy book titles
 - Added debugging logging system that can be enabled/disabled
