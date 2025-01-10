@@ -1,7 +1,7 @@
 # Changelog
 
 
-## [1.2.9]
+## [1.2.10]
 - Cleaning up dev files and folders
 
 ## [1.2.6]

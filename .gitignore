@@ -44,5 +44,5 @@ travelers_journal.jar
 # gbti
 .product/assets
 .plans 
-scripts
+.env
 travelers-journal-*.jar
