@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traveler's Journal Preview</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="input-section">
+            <h2 class="section-title">Markdown Input</h2>
+            <textarea id="markdownInput" spellcheck="false" placeholder="Enter your markdown here..."></textarea>
+        </div>
+        <div class="preview-section">
+            <h2 class="section-title">Book Preview</h2>
+            <div class="preview-container">
+                <div class="book-content" id="bookPages"></div>
+                <div class="book-navigation">
+                    <button class="nav-button" id="prevPage">Previous</button>
+                    <span id="pageNumber">Page 1 of 1</span>
+                    <button class="nav-button" id="nextPage">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="preview.js"></script>
+</body>
+</html>
