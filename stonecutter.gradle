@@ -9,9 +9,9 @@ plugins {
 
 stonecutter.active '26.3'
 
-// Builds every node and copies each mod jar into build/libs/ at the root
+// Builds every node and copies each mod jar and probe jar into build/libs/ at the root
 tasks.register('buildAndCollect') {
 	group = 'build'
-	description = 'Builds every node and collects the mod jars into build/libs/.'
+	description = 'Builds every node and collects the mod and probe jars into build/libs/.'
 	dependsOn stonecutter.tasks.named('buildAndCollect')
 }

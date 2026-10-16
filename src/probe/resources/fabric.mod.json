@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "travelers_journal_probe",
+  "version": "${version}",
+  "name": "Traveler's Journal test probe",
+  "description": "Test mod for the boot harness. Never shipped.",
+  "license": "GPL-3.0",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.gbti.probe.JournalProbe"
+    ]
+  },
+  "depends": {
+    "travelers-journal": "*",
+    "fabric-api": "*"
+  }
+}

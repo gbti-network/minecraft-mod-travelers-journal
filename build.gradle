@@ -17,6 +17,15 @@ base {
 	archivesName = project.archives_base_name
 }
 
+// The probe is the test mod scripts/test-matrix.sh loads beside the packaged jar. It builds into
+// its own jar and never ships.
+sourceSets {
+	probe {
+		compileClasspath += main.compileClasspath + main.output
+		runtimeClasspath += main.runtimeClasspath + main.output
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	if (obfuscated) {
@@ -37,9 +46,9 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 def resourceProps = [version: project.version, mc_range: project.mc_range, java_version: javaVersion]
-processResources {
-	inputs.properties resourceProps
-	filesMatching('fabric.mod.json') {
+[processResources, processProbeResources].each { task ->
+	task.inputs.properties resourceProps
+	task.filesMatching('fabric.mod.json') {
 		expand resourceProps
 	}
 }
@@ -50,10 +59,27 @@ jar {
 	}
 }
 
-// Copies this node's mod jar to <root>/build/libs/, so one directory holds every version's jar
+def probeJar = tasks.register('probeJar', Jar) {
+	from sourceSets.probe.output
+	archiveClassifier = obfuscated ? 'probe-dev' : 'probe'
+	destinationDirectory = layout.buildDirectory.dir(obfuscated ? 'devlibs' : 'libs')
+}
+def probeModJar = probeJar
+if (obfuscated) {
+	probeModJar = tasks.register('remapProbeJar', net.fabricmc.loom.task.RemapJarTask) {
+		inputFile = probeJar.flatMap { it.archiveFile }
+		archiveClassifier = 'probe'
+	}
+}
+tasks.named('build') {
+	dependsOn probeModJar
+}
+
+// Copies this node's mod jar and probe jar to <root>/build/libs/, so one directory holds them all
 tasks.register('buildAndCollect', Copy) {
 	group = 'build'
-	description = 'Builds this node and copies its mod jar into the root build/libs/.'
+	description = 'Builds this node and copies its mod and probe jars into the root build/libs/.'
 	from tasks.named(modJarTask).flatMap { it.archiveFile }
+	from probeModJar.flatMap { it.archiveFile }
 	into rootProject.layout.buildDirectory.dir('libs')
 }

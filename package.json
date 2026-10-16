@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "release": "node scripts/release.js",
-    "build": "node scripts/build.js"
+    "build": "node scripts/build.js",
+    "test": "./gradlew buildAndCollect && scripts/test-matrix.sh libs build/test-matrix/latest build/libs"
   },
   "dependencies": {
     "dotenv": "^16.4.7"
