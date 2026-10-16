@@ -129,7 +129,8 @@ class UpgradeProbe {
                 "before " + joinListBefore.size() + " entries, now " + joinListNow.size());
         int newcomerJournals = 0;
         for (int i = 0; i < newcomer.getInventory().getContainerSize(); i++) {
-            if (JournalBook.isJournal(newcomer.getInventory().getItem(i))) newcomerJournals++;
+            ItemStack stack = newcomer.getInventory().getItem(i);
+            if (JournalBook.isJournal(stack)) newcomerJournals += stack.getCount();
         }
         check("after-newcomer-gets-one", newcomerJournals == 1, "newcomer's journals: " + newcomerJournals);
 
@@ -160,10 +161,12 @@ class UpgradeProbe {
         return content == null ? null : content.title().raw();
     }
 
+    // Books, not slots: identical books stack, so a second copy can hide in the first one's slot
     private static int count(ServerPlayer player, String title) {
         int count = 0;
         for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            if (title.equals(titleOf(player.getInventory().getItem(i)))) count++;
+            ItemStack stack = player.getInventory().getItem(i);
+            if (title.equals(titleOf(stack))) count += stack.getCount();
         }
         return count;
     }
@@ -171,7 +174,8 @@ class UpgradeProbe {
     private static int books(ServerPlayer player) {
         int count = 0;
         for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            if (player.getInventory().getItem(i).getItem() == Items.WRITTEN_BOOK) count++;
+            ItemStack stack = player.getInventory().getItem(i);
+            if (stack.getItem() == Items.WRITTEN_BOOK) count += stack.getCount();
         }
         return count;
     }

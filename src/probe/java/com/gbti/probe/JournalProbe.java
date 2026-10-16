@@ -222,10 +222,12 @@ public class JournalProbe implements ModInitializer {
         player.gameMode.useItem(player, server.overworld(), player.getItemInHand(hand), hand);
     }
 
+    // Books, not slots: identical journals stack
     private static int journals(ServerPlayer player) {
         int count = 0;
         for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            if (JournalBook.isJournal(player.getInventory().getItem(i))) count++;
+            ItemStack stack = player.getInventory().getItem(i);
+            if (JournalBook.isJournal(stack)) count += stack.getCount();
         }
         return count;
     }
