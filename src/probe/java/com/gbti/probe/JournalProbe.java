@@ -46,11 +46,12 @@ public class JournalProbe implements ModInitializer {
     private static final Logger LOG = LogManager.getLogger("TJProbe");
     private static final Path CONTENT = Path.of("config/travelers-journal/travelers_journal.md");
     private static final Path JOIN_LIST = Path.of("config/travelers-journal/joinlist.txt");
+    private static final Path MODE = Path.of("config/travelers-journal-probe.txt");
     // The mock player joins once the server is ticking and the force-loaded spawn area has loaded
     // (a join from inside SERVER_STARTED can block forever waiting for entities to load). The
     // checks run once its own chunks have loaded, well short of the 15 s keep-alive timeout.
-    private static final int JOIN_TICKS = 40;
-    private static final int SETTLE_TICKS = 60;
+    static final int JOIN_TICKS = 40;
+    static final int SETTLE_TICKS = 60;
 
     private static final List<String> JOURNAL = List.of(
             "**Bold** *Italic* _Under_ <red>Red<> \"Quoted\" it's",
@@ -63,6 +64,8 @@ public class JournalProbe implements ModInitializer {
             "Line 8", "Line 9", "Line 10", "Line 11", "Line 12", "Line 13", "Line 14");
     private static final String PAGE_ONE = "Bold Italic Under Red \"Quoted\" it's\n・ Bullet\n*Stars* and \\ slash\n";
     private static final String UPDATED = "Updated after reload";
+    private static final List<String> DEFAULT_TEXT = List.of("# Welcome to the Server!", "",
+            "This is your Traveler's Journal. Use it to record your adventures and discoveries.");
 
     private int passed;
     private int failed;
@@ -72,6 +75,12 @@ public class JournalProbe implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // test-matrix.sh upgrade writes this file to run the two halves of an upgrade test instead
+        String mode = mode();
+        if (mode.startsWith("upgrade-")) {
+            new UpgradeProbe(mode.equals("upgrade-before")).register();
+            return;
+        }
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             LOG.info("[TJ-PROBE] START");
             command(server, server.createCommandSourceStack(), "forceload add -32 -32 31 31");
@@ -88,7 +97,19 @@ public class JournalProbe implements ModInitializer {
         });
     }
 
+    private static String mode() {
+        try {
+            return Files.exists(MODE) ? Files.readString(MODE).trim() : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private void join(MinecraftServer server) throws Exception {
+        // Every matrix server is a first boot: the defaults the mod just wrote must already be in use
+        check("first-boot-defaults", FileManager.lines.equals(DEFAULT_TEXT) && FileManager.legacyTitles.contains("Traveller's Journal"),
+                "lines " + FileManager.lines + ", legacy titles " + FileManager.legacyTitles);
+
         // Reload takes the journal text from disk
         Files.writeString(CONTENT, String.join("\n", JOURNAL) + "\n", StandardCharsets.UTF_8);
         command(server, server.createCommandSourceStack(), "travelers_journal reload");
@@ -175,7 +196,7 @@ public class JournalProbe implements ModInitializer {
         server.getPlayerList().remove(alice);
     }
 
-    private static ServerPlayer join(MinecraftServer server, String name) {
+    static ServerPlayer join(MinecraftServer server, String name) {
         GameProfile profile = new GameProfile(UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(StandardCharsets.UTF_8)), name);
         CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
         ServerPlayer player = new ServerPlayer(server, server.overworld(), profile, cookie.clientInformation());
@@ -191,13 +212,13 @@ public class JournalProbe implements ModInitializer {
         return join(server, name);
     }
 
-    private static void command(MinecraftServer server, CommandSourceStack source, String command) {
+    static void command(MinecraftServer server, CommandSourceStack source, String command) {
         server.getCommands().performPrefixedCommand(source, command);
     }
 
     // The mock players join the overworld. Entity.level() is not used: its intermediary name
     // changed in 1.21.9, so a probe built for 1.21.5 could not call it there.
-    private static void use(MinecraftServer server, ServerPlayer player, InteractionHand hand) {
+    static void use(MinecraftServer server, ServerPlayer player, InteractionHand hand) {
         player.gameMode.useItem(player, server.overworld(), player.getItemInHand(hand), hand);
     }
 
@@ -217,7 +238,7 @@ public class JournalProbe implements ModInitializer {
         return ItemStack.EMPTY;
     }
 
-    private static String text(ItemStack book) {
+    static String text(ItemStack book) {
         WrittenBookContent content = book.get(DataComponents.WRITTEN_BOOK_CONTENT);
         if (content == null) return "";
         StringBuilder text = new StringBuilder();

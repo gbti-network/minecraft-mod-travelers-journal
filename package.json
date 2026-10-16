@@ -5,6 +5,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "test": "./gradlew buildAndCollect && scripts/test-matrix.sh libs build/test-matrix/latest build/libs",
+    "test:upgrades": "./gradlew buildAndCollect && scripts/test-matrix.sh upgrades build/test-matrix/upgrades build/libs/travelers-journal-*+mc1.21-1.21.1.jar build/libs/travelers-journal-*+mc1.21-1.21.1-probe.jar 1.21.1",
     "release:stage": "node scripts/release.js stage",
     "release:publish": "node scripts/release.js publish"
   }

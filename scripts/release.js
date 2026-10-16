@@ -1,7 +1,8 @@
 // Release pipeline for Traveler's Journal: one jar per range of Minecraft versions.
 // Linux or WSL only, because the test matrix is a bash script that boots real servers.
 //
-//   npm run release:stage                 build every node, run the test matrix and stage
+//   npm run release:stage                 build every node, run the test matrix and the upgrade
+//                                         tests from every past release, and stage
 //                                         build/release/<version>/
 //   npm run release:publish [-- --dry-run]
 //                                         tag the staged commit, push it with the tag, create the
@@ -29,6 +30,8 @@ const MODRINTH_PROJECT = '6Uocsa4f';
 const MODRINTH_FABRIC_API = 'P7dR8mSH';
 const CURSEFORGE_PROJECT = 1743974;
 const USER_AGENT = 'gbti-network/minecraft-mod-travelers-journal (release script)';
+// Every release before 1.3.0 was built for 1.21.1, so that is where existing servers upgrade from
+const UPGRADE_FROM_MINECRAFT = '1.21.1';
 
 function fail(message) {
     console.error(`release: ${message}`);
@@ -105,6 +108,14 @@ function stage() {
         return { file, version_number: versionNumber, game_versions: gameVersions,
             sha256: crypto.createHash('sha256').update(data).digest('hex') };
     });
+
+    // Every existing server must keep its journal: upgrade each past release on the version they
+    // all ran on, with the jar that covers it
+    const upgradeTarget = entries.find(e => e.game_versions.includes(UPGRADE_FROM_MINECRAFT))
+        ?? fail(`no jar passed on Minecraft ${UPGRADE_FROM_MINECRAFT}, where past releases ran`);
+    run(path.join(SCRIPTS, 'test-matrix.sh'), ['upgrades', path.join(matrixDir, 'upgrades'),
+        path.join(libs, upgradeTarget.file), path.join(libs, upgradeTarget.file.replace(/\.jar$/, '-probe.jar')),
+        UPGRADE_FROM_MINECRAFT]);
 
     const table = ['| Minecraft | File |', '|---|---|',
         ...entries.map(e => `| ${versionRange(e.game_versions)} | \`${e.file}\` |`)].join('\n');

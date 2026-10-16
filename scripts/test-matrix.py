@@ -3,9 +3,13 @@
   fabric-api <mc>        newest Fabric API on Modrinth for <mc>: url, sha512, version
   modinfo <jar>          mod id, version and declared minecraft range of a jar
   widen <jar> <out>      copy of <jar> whose minecraft range is widened to "*"
+  past <mc> <out> [skip] every released Traveler's Journal for <mc> on Modrinth, downloaded to <out>
+                         (checked against Modrinth's SHA-512); prints each path. Skips version [skip].
   port                   a free localhost TCP port
 """
+import hashlib
 import json
+import os
 import socket
 import sys
 import urllib.parse
@@ -47,6 +51,26 @@ def widen(jar, out):
             dst.writestr(info, data)
 
 
+def past(mc, out, skip=""):
+    q = urllib.parse.urlencode({"game_versions": json.dumps([mc]), "loaders": json.dumps(["fabric"])})
+    req = urllib.request.Request(f"https://api.modrinth.com/v2/project/travelers-journal/version?{q}", headers=UA)
+    versions = json.load(urllib.request.urlopen(req, timeout=30))
+    os.makedirs(out, exist_ok=True)
+    for v in versions:
+        if v["version_number"] == skip:
+            continue
+        f = next((f for f in v["files"] if f["primary"]), v["files"][0])
+        dest = os.path.join(out, f["filename"])
+        if not os.path.exists(dest):
+            data = urllib.request.urlopen(urllib.request.Request(f["url"], headers=UA), timeout=60).read()
+            if hashlib.sha512(data).hexdigest() != f["hashes"]["sha512"]:
+                sys.exit(f"checksum mismatch for {f['filename']}")
+            with open(dest + ".part", "wb") as part:
+                part.write(data)
+            os.replace(dest + ".part", dest)
+        print(dest)
+
+
 def port():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -55,5 +79,5 @@ def port():
 
 if __name__ == "__main__":
     cmd, *args = sys.argv[1:] or ["help"]
-    {"fabric-api": fabric_api, "modinfo": modinfo, "widen": widen, "port": port}.get(
+    {"fabric-api": fabric_api, "modinfo": modinfo, "widen": widen, "past": past, "port": port}.get(
         cmd, lambda *a: sys.exit(__doc__))(*args)

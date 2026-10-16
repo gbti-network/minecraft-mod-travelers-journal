@@ -1,0 +1,5 @@
+title=Traveler's Journal
+author=Inn Keeper
+give_at_spawn=true
+debug_logging=false
+legacy_titles=Traveller's Journal,Travelers Journal

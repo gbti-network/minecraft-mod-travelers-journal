@@ -16,10 +16,21 @@
 #   test-matrix.sh run <jar> <probe> <version> [--widen]   one cell, one TSV line on stdout
 #   test-matrix.sh matrix <outdir> <jar> <probe> [<jar> <probe>...]   every pair on every version
 #   test-matrix.sh libs <outdir> <dir>                 matrix of every jar in <dir> with its -probe.jar
+#   test-matrix.sh upgrade <old-jar> <new-jar> <probe> <version> [config-dir]   one upgrade cell
+#   test-matrix.sh upgrades <outdir> <new-jar> <probe> [version]   every past release, upgraded
 #
 # --widen tests a copy of the jar whose minecraft range is "*", to learn whether its code runs on
 # a version its range excludes. A matrix passes when no cell is FAIL, CRASH or ENV and every
-# version has a PASS. Linux only (WSL is fine). Servers live under ~/.cache/travelers-boot, on the
+# version has a PASS.
+#
+# An upgrade cell is two boots on one world, as a server admin upgrades: the old jar first (with
+# [config-dir] seeded as its config, else the defaults it writes), then the new jar in its place.
+# UpgradeProbe.java holds the checks. "upgrades" takes every Traveler's Journal release Modrinth
+# lists for [version] (default 1.21.1, where every release before 1.3.0 ran), plus any jars named
+# in EXTRA_PAST, and upgrades each twice: with its own default config and with
+# src/probe/fixtures/past-install.
+#
+# Linux only (WSL is fine). Servers live under ~/.cache/travelers-boot, on the
 # Linux filesystem, in offline mode on a free localhost port. The EULA is copied from EULA_FROM,
 # a server whose EULA the owner has accepted; this script never accepts one itself and never
 # deletes anything (run directories collect under $CACHE/runs and are cleared by hand).
@@ -35,7 +46,7 @@ INSTALLER=1.1.2
 BOOT_TIMEOUT=${BOOT_TIMEOUT:-300}
 PROBE_TIMEOUT=${PROBE_TIMEOUT:-60}
 PARALLEL=${PARALLEL:-4}
-EXPECT_CHECKS=22
+EXPECT_CHECKS=23
 ALL_VERSIONS=(1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10 1.21.11
 	26.1 26.1.1 26.1.2 26.2 26.3)
 ERRORS='InvalidMixinException|MixinApplyError|MixinTransformerError|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|BootstrapMethodError|IncompatibleClassChangeError|ClassCastException|Exception in thread|\[TJ\] (An error|Failed)|TJ-PROBE\] stack trace'
@@ -61,7 +72,7 @@ write_props() { # dir port
 boot() { # dir log [steps...]
 	local dir=$1 log=$2 fifo="$1/.stdin" waited=0 pid step died=0 t
 	shift 2
-	mkfifo "$fifo"
+	[[ -p $fifo ]] || mkfifo "$fifo"
 	(cd "$dir" && exec env -i HOME="$dir" PATH=/usr/bin:/bin \
 		"$JAVA" -Xms256M -Xmx1G -jar fabric-server-launch.jar nogui) < "$fifo" > "$log" 2>&1 &
 	pid=$!
@@ -129,9 +140,41 @@ fetch_one() { # version
 	echo "fetch $v: control $([[ -f $d/control.ok ]] && echo ok || echo FAILED), Fabric API $(cat "$d/fabric-api.version" 2>/dev/null)"
 }
 
+workdir() { # version name: a fresh server directory with the launcher, the EULA and Fabric API
+	local d="$CACHE/mc/$1" work
+	mkdir -p "$CACHE/runs"
+	work=$(mktemp -d "$CACHE/runs/$2-$1-XXXX")
+	mkdir -p "$work/mods" "$work/.fabric"
+	cp "$d/fabric-server-launch.jar" "$work/"
+	cp "$EULA_FROM" "$work/eula.txt"
+	ln -s "$d/control/libraries" "$work/libraries"
+	[[ -d $d/control/versions ]] && ln -s "$d/control/versions" "$work/versions"
+	ln -s "$d/control/.fabric/server" "$work/.fabric/server"
+	cp "$d/fabric-api.jar" "$work/mods/"
+	write_props "$work" "$(helper port)"
+	echo "$work"
+}
+
+# Prints nothing when <log> shows the probe finished with <expect> passes and no failure, error
+# or crash report; otherwise one line naming every problem.
+probe_problems() { # log expect workdir
+	local log=$1 expect=$2 done_line err problems=()
+	done_line=$(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+ fail=[0-9]+' "$log")
+	if [[ -z $done_line ]]; then
+		problems+=("probe never finished")
+	elif [[ $done_line != *"pass=$expect fail=0" ]]; then
+		problems+=("${done_line#*] }: $(grep -E '\[TJ-PROBE\] FAIL' "$log" | sed 's/.*\[TJ-PROBE\] FAIL //' | tr '\n' ';')")
+	fi
+	err=$(grep -m1 -E "$ERRORS" "$log" | oneline)
+	[[ $err ]] && problems+=("$err")
+	[[ -z "$(ls -A "$3/crash-reports" 2>/dev/null)" ]] || problems+=("crash report written")
+	(( ${#problems[@]} )) && printf '%s; ' "${problems[@]}" | oneline
+	return 0
+}
+
 run_one() { # jar probe version [--widen]
 	local jar=$1 probe=$2 v=$3 widen=${4:-} d="$CACHE/mc/$3" start=$SECONDS
-	local id mver range label work log verdict evidence ready=1 rc=0 done_line
+	local id mver range label work log verdict evidence ready=1 rc=0
 	IFS=$'\t' read -r id mver range < <(helper modinfo "$jar")
 	label=$mver
 	[[ $widen ]] && label="$mver(widened)"
@@ -140,17 +183,9 @@ run_one() { # jar probe version [--widen]
 		result ENV "control boot failed or not fetched: $d/control.log"
 		return
 	fi
-	mkdir -p "$CACHE/runs"
-	work=$(mktemp -d "$CACHE/runs/journal-$v-XXXX")
-	mkdir -p "$work/mods" "$work/.fabric"
-	cp "$d/fabric-server-launch.jar" "$work/"
-	cp "$EULA_FROM" "$work/eula.txt"
-	ln -s "$d/control/libraries" "$work/libraries"
-	[[ -d $d/control/versions ]] && ln -s "$d/control/versions" "$work/versions"
-	ln -s "$d/control/.fabric/server" "$work/.fabric/server"
-	cp "$d/fabric-api.jar" "$probe" "$work/mods/"
+	work=$(workdir "$v" journal)
+	cp "$probe" "$work/mods/"
 	if [[ $widen ]]; then helper widen "$jar" "$work/mods/$(basename "$jar")"; else cp "$jar" "$work/mods/"; fi
-	write_props "$work" "$(helper port)"
 	log="$work/run.log"
 	boot "$work" "$log" "until:[TJ-PROBE] DONE" "sleep:1" || rc=$?
 	(( rc == 1 )) && ready=0
@@ -166,22 +201,12 @@ run_one() { # jar probe version [--widen]
 		verdict=CRASH
 		evidence="crashed after ready: $(grep -m1 -E "$ERRORS" "$log" | oneline)"
 	else
-		local problems=() err
-		done_line=$(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+ fail=[0-9]+' "$log")
-		if [[ -z $done_line ]]; then
-			problems+=("probe never finished")
-		elif [[ $done_line != *"pass=$EXPECT_CHECKS fail=0" ]]; then
-			problems+=("${done_line#*] }: $(grep -E '\[TJ-PROBE\] FAIL' "$log" | sed 's/.*\[TJ-PROBE\] FAIL //' | tr '\n' ';')")
-		fi
-		err=$(grep -m1 -E "$ERRORS" "$log" | oneline)
-		[[ $err ]] && problems+=("$err")
-		[[ -z "$(ls -A "$work/crash-reports" 2>/dev/null)" ]] || problems+=("crash report written")
-		if (( ${#problems[@]} )); then
+		evidence=$(probe_problems "$log" "$EXPECT_CHECKS" "$work")
+		if [[ $evidence ]]; then
 			verdict=FAIL
-			evidence=$(printf '%s; ' "${problems[@]}" | oneline)
 		else
 			verdict=PASS
-			evidence="${done_line#*] }"
+			evidence=$(grep -m1 -oE 'DONE pass=[0-9]+ fail=[0-9]+' "$log")
 		fi
 	fi
 	if [[ ${TB_OUT:-} ]]; then
@@ -189,6 +214,75 @@ run_one() { # jar probe version [--widen]
 		cp "$log" "$TB_OUT/logs/$label-$v.log"
 	fi
 	result "$verdict" "$evidence"
+}
+
+upgrade_one() { # old-jar new-jar probe version [config-dir]
+	local old=$1 new=$2 probe=$3 v=$4 fixture=${5:-} start=$SECONDS
+	local over nver label tag work phase log rc problems expect
+	IFS=$'\t' read -r _ over _ < <(helper modinfo "$old")
+	IFS=$'\t' read -r _ nver _ < <(helper modinfo "$new")
+	label="$over to $nver, $([[ $fixture ]] && echo customised || echo default) config"
+	tag="upgrade-$over-to-$nver-$([[ $fixture ]] && echo customised || echo default)"
+	result() { printf '%s\t%s\t%s\t%s\t%s\n' "$label" "$v" "$1" "$((SECONDS - start))" "$2"; }
+	if [[ ! -f $CACHE/mc/$v/control.ok ]]; then
+		result ENV "control boot failed or not fetched: $CACHE/mc/$v/control.log"
+		return
+	fi
+	work=$(workdir "$v" journal-upgrade)
+	mkdir -p "$work/config/travelers-journal" "$work/replaced-mods"
+	[[ $fixture ]] && cp "$fixture"/* "$work/config/travelers-journal/"
+	cp "$old" "$probe" "$work/mods/"
+	for phase in before after; do
+		echo "upgrade-$phase" > "$work/config/travelers-journal-probe.txt"
+		log="$work/$phase.log"
+		rc=0
+		boot "$work" "$log" "until:[TJ-PROBE] DONE" "sleep:1" || rc=$?
+		if [[ ${TB_OUT:-} ]]; then
+			mkdir -p "$TB_OUT/logs"
+			cp "$log" "$TB_OUT/logs/$tag-$v-$phase.log"
+		fi
+		if grep -qE 'Incompatible mods? (found|set)' "$log"; then
+			result REFUSED "$phase: $(grep -m1 -E 'requires' "$log" | sed 's/^[[:space:]]*- //' | oneline)"
+			return
+		fi
+		(( rc == 1 )) && { result CRASH "$phase: never ready: $(grep -m1 -E "$ERRORS" "$log" | oneline)"; return; }
+		(( rc == 2 )) && { result CRASH "$phase: crashed after ready: $(grep -m1 -E "$ERRORS" "$log" | oneline)"; return; }
+		expect=$([[ $phase == before ]] && echo 2 || echo 8)
+		problems=$(probe_problems "$log" "$expect" "$work")
+		[[ $problems ]] && { result FAIL "$phase: $problems"; return; }
+		# Replace the jar the way an admin would; the old one is moved aside, not deleted
+		if [[ $phase == before ]]; then
+			mv "$work/mods/$(basename "$old")" "$work/replaced-mods/"
+			cp "$new" "$work/mods/"
+		fi
+	done
+	result PASS "both boots clean: 2 checks on the old jar, 8 after the upgrade"
+}
+
+upgrades() { # outdir new-jar probe [version]
+	local out=$1 new=$2 probe=$3 v=${4:-1.21.1} nver jar bad
+	local -a past
+	mkdir -p "$out"
+	export TB_OUT=$out
+	fetch_one "$v" > "$out/fetch.txt"
+	IFS=$'\t' read -r _ nver _ < <(helper modinfo "$new")
+	mapfile -t past < <(helper past "$v" "$CACHE/past/$v" "$nver")
+	# shellcheck disable=SC2206 # EXTRA_PAST is a space-separated list of jar paths
+	past+=(${EXTRA_PAST:-})
+	(( ${#past[@]} )) || die "no past release found for $v"
+	export U_NEW=$new U_PROBE=$probe U_V=$v U_FIXTURE="$HERE/../src/probe/fixtures/past-install"
+	for jar in "${past[@]}"; do printf '%s\0%s\0' "$jar" default "$jar" customised; done |
+		xargs -0 -P "$PARALLEL" -n 2 sh -c '
+			if [ "$2" = customised ]; then exec "$0" upgrade "$1" "$U_NEW" "$U_PROBE" "$U_V" "$U_FIXTURE"; fi
+			exec "$0" upgrade "$1" "$U_NEW" "$U_PROBE" "$U_V"' "$0" > "$out/upgrades.raw.tsv"
+	sort -t$'\t' -k1,1V "$out/upgrades.raw.tsv" > "$out/upgrades.tsv"
+	cut -f1-3 "$out/upgrades.tsv"
+	bad=$(awk -F'\t' '$3 != "PASS"' "$out/upgrades.tsv")
+	if [[ $bad ]]; then
+		printf 'problems:\n%s\nupgrades: FAILED\n' "$bad"
+		return 1
+	fi
+	echo "upgrades: passed, $(wc -l < "$out/upgrades.tsv") cells"
 }
 
 matrix() { # outdir jar probe [jar probe...]
@@ -238,5 +332,7 @@ case ${1:-} in
 	run) shift; run_one "$@" ;;
 	matrix) shift; matrix "$@" ;;
 	libs) shift; libs "$@" ;;
-	*) sed -n '2,26p' "$0" ;;
+	upgrade) shift; upgrade_one "$@" ;;
+	upgrades) shift; upgrades "$@" ;;
+	*) sed -n '2,36p' "$0" ;;
 esac

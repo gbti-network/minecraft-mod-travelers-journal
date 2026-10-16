@@ -33,6 +33,15 @@ Each release has one jar per range of Minecraft versions. The range is in the fi
 
 The 1.21.x jars need Java 21 or newer, and the 26.x jars need Java 25, as Minecraft itself does.
 
+### Upgrading
+
+Replace the old jar in your `mods` folder with the new one and restart. The files in `config/travelers-journal/` carry over as they are:
+- your settings, text and join list;
+- the journals your players already carry, including ones under a legacy title, which refresh the next time they are used;
+- players already on the join list, who do not get a second copy.
+
+Every release is tested upgrading from each earlier release.
+
 ## 🔧 Configuration
 
 The mod can be configured through files in the `config/travelers-journal/` directory:

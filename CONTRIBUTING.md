@@ -58,12 +58,38 @@ its declared range, and Fabric must refuse it everywhere else. It runs on Linux 
 npm test
 ```
 
+### Upgrades from past releases
+
+A server that ran any earlier Traveler's Journal must keep its journal when it swaps in a new jar:
+its config, its text, its join list and the books its players already carry. The upgrade test
+proves it on real servers:
+
+1. It downloads every release Modrinth lists for Minecraft 1.21.1, where every release before
+   1.3.0 ran, and checks each against Modrinth's SHA-512.
+2. For each release it boots the old jar first and the new one second, on the same world.
+3. It runs that twice: once with the old jar's own default config, and once with the customised
+   install in `src/probe/fixtures/past-install`.
+
+`src/probe/java/com/gbti/probe/UpgradeProbe.java` holds the checks:
+
+- nobody who already had the journal gets a second copy;
+- the old book and one under a legacy title are both recognised and refresh on use;
+- the join list keeps every entry;
+- new players still get the journal.
+
+To add other old jars, for example a server's own build, list them in `EXTRA_PAST`:
+
+```bash
+npm run test:upgrades
+EXTRA_PAST="/path/to/travelers-journal-1.2.6.17.jar" npm run test:upgrades
+```
+
 ## Releasing
 
 1. Set `mod_version` in `gradle.properties`, add a `## [<version>]` section to
    `.product/changelog.md`, and commit both.
-2. `npm run release:stage` builds every jar, runs the test matrix and stages the jars, release notes
-   and checksums in `build/release/<version>/`.
+2. `npm run release:stage` builds every jar, runs the test matrix and the upgrade test, and stages
+   the jars, release notes and checksums in `build/release/<version>/`.
 3. `npm run release:publish -- --dry-run` shows what publishing will do. Without `--dry-run` it tags
    the commit, pushes, creates the GitHub release and uploads to Modrinth and CurseForge when
    `MODRINTH_TOKEN` and `CURSEFORGE_TOKEN` are set. Planet Minecraft is updated by hand.
