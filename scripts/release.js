@@ -84,7 +84,9 @@ function stage() {
     for (const dir of [libs, matrixDir, releaseDir]) fs.rmSync(dir, { recursive: true, force: true });
 
     run('./gradlew', ['buildAndCollect']);
-    const jars = fs.readdirSync(libs).filter(file => file.endsWith('.jar') && !file.endsWith('-probe.jar')).sort();
+    // Oldest Minecraft version first: a numeric sort puts mc1.21.2 before mc1.21.11
+    const jars = fs.readdirSync(libs).filter(file => file.endsWith('.jar') && !file.endsWith('-probe.jar'))
+        .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     const pairs = jars.flatMap(jar => {
         const probe = jar.replace(/\.jar$/, '-probe.jar');
         if (!fs.existsSync(path.join(libs, probe))) fail(`no probe jar for ${jar}`);
