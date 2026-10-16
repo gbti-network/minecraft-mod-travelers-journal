@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.gbti.mixin",
+  "compatibilityLevel": "${mixin_java}",
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixins": [
+    "CustomClickActionMixin"
+  ]
+}

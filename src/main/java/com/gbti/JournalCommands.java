@@ -14,6 +14,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+//? if >=1.21.6 {
+import com.gbti.dialog.JournalScreens;
+//?}
 //? if >=1.21.11 {
 import net.minecraft.server.permissions.Permission;
 import net.minecraft.server.permissions.PermissionCheck;
@@ -85,8 +88,16 @@ public final class JournalCommands {
         *///?}
     }
 
-    // On its own, either name lists what it does instead of failing as an incomplete command
+    // On its own, either name opens the manager for a player (1.21.6 and later) and lists the
+    // commands otherwise, instead of failing as an incomplete command
     private static int bare(CommandContext<CommandSourceStack> context) {
+        //? if >=1.21.6 {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player != null) {
+            JournalScreens.hub(player);
+            return 1;
+        }
+        //?}
         context.getSource().sendSuccess(JournalCommands::usage, false);
         return 1;
     }
@@ -97,7 +108,11 @@ public final class JournalCommands {
         //?} else {
         /*String edit = "names a journal's file to edit";
         *///?}
-        return Component.literal("Traveler's Journal: /journals or /travelers_journal").withStyle(ChatFormatting.GOLD)
+        MutableComponent usage = Component.literal("Traveler's Journal: /journals or /travelers_journal").withStyle(ChatFormatting.GOLD);
+        //? if >=1.21.6 {
+        usage.append(line("/journals", "opens the journal manager, in game"));
+        //?}
+        return usage
             .append(line("/journals list", "shows every journal"))
             .append(line("/journals give <players> [journal]", "gives players a journal"))
             .append(line("/journals create <id>", "adds a journal"))
@@ -202,6 +217,11 @@ public final class JournalCommands {
             return fail(context, unknown(id));
         }
         //? if >=1.21.6 {
+        ServerPlayer player = context.getSource().getPlayer();
+        if (player != null) {
+            JournalScreens.editor(player, journal);
+            return 1;
+        }
         String message = "Edit " + journal.textPath() + ", then run /journals reload.";
         //?} else {
         /*String message = "Dialogs need Minecraft 1.21.6 or newer. Edit " + journal.textPath() + ", then run /journals reload.";

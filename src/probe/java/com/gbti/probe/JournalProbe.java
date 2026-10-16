@@ -46,7 +46,7 @@ import static com.gbti.probe.ProbeSupport.use;
  * "[TJ-PROBE] FAIL name: detail" for each check, and ends with "[TJ-PROBE] DONE pass=N fail=M".
  *
  * The checks run in phases a few seconds apart: the default journal (this class), then several
- * journals (JournalsProbe).
+ * journals (JournalsProbe), then, on 1.21.6 and later, the in-game manager (DialogProbe).
  */
 public class JournalProbe implements ModInitializer {
     private static final Path CONTENT = Path.of("config/travelers-journal/travelers_journal.md");
@@ -59,6 +59,12 @@ public class JournalProbe implements ModInitializer {
     static final int JOIN_TICKS = 40;
     static final int SETTLE_TICKS = 60;
     static final int CHECKS = 28;
+    // The dialog checks exist on the jars that have dialogs, 1.21.6 and later
+    //? if >=1.21.6 {
+    private static final int DIALOG_CHECKS = DialogProbe.CHECKS;
+    //?} else {
+    /*private static final int DIALOG_CHECKS = 0;
+    *///?}
 
     private static final List<String> JOURNAL = List.of(
             "**Bold** *Italic* _Under_ <red>Red<> \"Quoted\" it's",
@@ -92,7 +98,7 @@ public class JournalProbe implements ModInitializer {
         }
         journals = new JournalsProbe(checks);
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            ProbeSupport.LOG.info("[TJ-PROBE] START expect={}", CHECKS + JournalsProbe.CHECKS);
+            ProbeSupport.LOG.info("[TJ-PROBE] START expect={}", CHECKS + JournalsProbe.CHECKS + DIALOG_CHECKS);
             command(server, server.createCommandSourceStack(), "forceload add -32 -32 31 31");
             joinCountdown = JOIN_TICKS;
         });
@@ -106,6 +112,9 @@ public class JournalProbe implements ModInitializer {
                 journalsCountdown = SETTLE_TICKS;
             } else if (journalsCountdown > 0 && --journalsCountdown == 0) {
                 checks.guarded(() -> journals.settled(server));
+                //? if >=1.21.6 {
+                checks.guarded(() -> new DialogProbe(checks).run(server));
+                //?}
                 checks.done();
             }
         });

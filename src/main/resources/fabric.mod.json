@@ -23,6 +23,7 @@
       "com.gbti.TravelersJournal"
     ]
   },
+  "mixins": [],
   "depends": {
     "fabricloader": ">=0.16.5",
     "minecraft": "${mc_range}",

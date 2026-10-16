@@ -45,12 +45,28 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.release = javaVersion
 }
 
-def resourceProps = [version: project.version, mc_range: project.mc_range, java_version: javaVersion]
+// Server dialogs exist from Minecraft 1.21.6. Older nodes leave out the in-game manager (its
+// classes and its mixin) and the probe's dialog checks, and their fabric.mod.json lists no mixins.
+def dialogs = sc.current.parsed.matches('>=1.21.6')
+def resourceProps = [version: project.version, mc_range: project.mc_range, java_version: javaVersion,
+		mixin_java: "JAVA_${javaVersion}", dialogs: dialogs]
 [processResources, processProbeResources].each { task ->
 	task.inputs.properties resourceProps
-	task.filesMatching('fabric.mod.json') {
+	task.filesMatching(['fabric.mod.json', 'travelers_journal.mixins.json']) {
 		expand resourceProps
 	}
+}
+if (dialogs) {
+	// The source says "mixins": [] so it stays valid JSON for the tools that read it unexpanded
+	processResources {
+		filesMatching('fabric.mod.json') {
+			filter { line -> line.replace('"mixins": []', '"mixins": ["travelers_journal.mixins.json"]') }
+		}
+	}
+} else {
+	processResources { exclude 'travelers_journal.mixins.json' }
+	tasks.named('compileJava') { exclude 'com/gbti/dialog/**', 'com/gbti/mixin/**' }
+	tasks.named('compileProbeJava') { exclude 'com/gbti/probe/DialogProbe.java' }
 }
 
 jar {
