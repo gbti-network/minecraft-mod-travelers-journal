@@ -58,14 +58,13 @@ public class FileManager {
                 writer.write("# Welcome to the Server!\n\n");
                 writer.write("This is your Traveler's Journal. Use it to record your adventures and discoveries.");
                 writer.close();
-            } else {
-                Scanner reader = new Scanner(contentFile);
-                while (reader.hasNextLine()) {
-                    String line = reader.nextLine();
-                    lines.add(line);
-                }
-                reader.close();
             }
+            // Read it back even when it was only just written, so a first boot uses the default text
+            Scanner contentReader = new Scanner(contentFile);
+            while (contentReader.hasNextLine()) {
+                lines.add(contentReader.nextLine());
+            }
+            contentReader.close();
 
             // Config file
             File configFile = new File(CONFIG_FILE);
@@ -77,42 +76,42 @@ public class FileManager {
                 writer.write("debug_logging=false\n");
                 writer.write("legacy_titles=Traveller's Journal,Travelers Journal\n");
                 writer.close();
-            } else {
-                Scanner reader = new Scanner(configFile);
-                while (reader.hasNextLine()) {
-                    String line = reader.nextLine();
-
-                    if(line.startsWith("title=")) {
-                        journalTitle = line.substring(6);
-                        TravelersJournal.logDebug("Set journal title to: '{}'", journalTitle);
-                    }
-                    else if(line.startsWith("author=")) {
-                        journalAuthor = line.substring(7);
-                        TravelersJournal.logDebug("Set journal author to: '{}'", journalAuthor);
-                    }
-                    else if(line.startsWith("give_at_spawn=")) {
-                        shouldGiveSpawn = line.substring(14).equals("true");
-                        TravelersJournal.logDebug("Set give_at_spawn to: {}", shouldGiveSpawn);
-                    }
-                    else if(line.startsWith("debug_logging=")) {
-                        String debugValue = line.substring(line.indexOf('=') + 1).trim();
-                        TravelersJournal.debugLoggingEnabled = debugValue.equals("true");
-                        TravelersJournal.logDebug("Set debugLoggingEnabled to: {}", TravelersJournal.debugLoggingEnabled);
-                    }
-                    else if(line.startsWith("legacy_titles=")) {
-                        String titlesStr = line.substring("legacy_titles=".length());
-                        String[] titles = titlesStr.split(",");
-                        for (String title : titles) {
-                            String trimmedTitle = title.trim();
-                            if (!trimmedTitle.isEmpty()) {
-                                legacyTitles.add(trimmedTitle);
-                            }
-                        }
-                        TravelersJournal.logDebug("Added legacy titles: {}", legacyTitles);
-                    }
-                }
-                reader.close();
             }
+            // Read it back even when it was only just written, so a first boot uses the defaults
+            Scanner configReader = new Scanner(configFile);
+            while (configReader.hasNextLine()) {
+                String line = configReader.nextLine();
+
+                if(line.startsWith("title=")) {
+                    journalTitle = line.substring(6);
+                    TravelersJournal.logDebug("Set journal title to: '{}'", journalTitle);
+                }
+                else if(line.startsWith("author=")) {
+                    journalAuthor = line.substring(7);
+                    TravelersJournal.logDebug("Set journal author to: '{}'", journalAuthor);
+                }
+                else if(line.startsWith("give_at_spawn=")) {
+                    shouldGiveSpawn = line.substring(14).equals("true");
+                    TravelersJournal.logDebug("Set give_at_spawn to: {}", shouldGiveSpawn);
+                }
+                else if(line.startsWith("debug_logging=")) {
+                    String debugValue = line.substring(line.indexOf('=') + 1).trim();
+                    TravelersJournal.debugLoggingEnabled = debugValue.equals("true");
+                    TravelersJournal.logDebug("Set debugLoggingEnabled to: {}", TravelersJournal.debugLoggingEnabled);
+                }
+                else if(line.startsWith("legacy_titles=")) {
+                    String titlesStr = line.substring("legacy_titles=".length());
+                    String[] titles = titlesStr.split(",");
+                    for (String title : titles) {
+                        String trimmedTitle = title.trim();
+                        if (!trimmedTitle.isEmpty()) {
+                            legacyTitles.add(trimmedTitle);
+                        }
+                    }
+                    TravelersJournal.logDebug("Added legacy titles: {}", legacyTitles);
+                }
+            }
+            configReader.close();
 
             // Join list file
             File joinListFile = new File(JOIN_LIST_FILE);
