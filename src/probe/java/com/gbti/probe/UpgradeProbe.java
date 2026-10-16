@@ -1,6 +1,7 @@
 package com.gbti.probe;
 
-import com.gbti.FileManager;
+import com.gbti.Journal;
+import com.gbti.Journals;
 import com.gbti.JournalBook;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -56,8 +57,8 @@ class UpgradeProbe {
 
     void register() {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            LOG.info("[TJ-PROBE] START {}", before ? "upgrade-before" : "upgrade-after");
-            JournalProbe.command(server, server.createCommandSourceStack(), "forceload add -32 -32 31 31");
+            LOG.info("[TJ-PROBE] START {} expect={}", before ? "upgrade-before" : "upgrade-after", before ? 2 : 10);
+            ProbeSupport.command(server, server.createCommandSourceStack(), "forceload add -32 -32 31 31");
             joinCountdown = JournalProbe.JOIN_TICKS;
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
@@ -79,14 +80,14 @@ class UpgradeProbe {
             // Releases before 1.3.0 read their files only when they already existed, so the boot
             // that wrote them ran with no text and gave nobody a book. A real install had booted
             // before; reload reads the files the way such a boot did.
-            JournalProbe.command(server, server.createCommandSourceStack(), "travelers_journal reload");
+            ProbeSupport.command(server, server.createCommandSourceStack(), "travelers_journal reload");
         }
         if (!before && Files.exists(JOIN_LIST)) {
             joinListBefore = Files.readAllLines(JOIN_LIST);
         }
-        veteran = JournalProbe.join(server, VETERAN);
+        veteran = ProbeSupport.join(server, VETERAN);
         if (!before) {
-            newcomer = JournalProbe.join(server, NEWCOMER);
+            newcomer = ProbeSupport.join(server, NEWCOMER);
         }
     }
 
@@ -101,9 +102,14 @@ class UpgradeProbe {
     private void checkAfter(MinecraftServer server) throws Exception {
         String title = config("title", "Traveler's Journal");
         String author = config("author", "Server");
-        check("after-config-kept", FileManager.journalTitle.equals(title) && FileManager.journalAuthor.equals(author)
-                && FileManager.legacyTitles.contains(LEGACY_TITLE),
-                FileManager.journalTitle + " by " + FileManager.journalAuthor + ", legacy " + FileManager.legacyTitles);
+        Journal journal = Journals.defaultJournal();
+        check("after-config-kept", journal.title().equals(title) && journal.author().equals(author)
+                && journal.legacyTitles().contains(LEGACY_TITLE),
+                journal.title() + " by " + journal.author() + ", legacy " + journal.legacyTitles());
+        // An earlier release's config has neither key 1.3.0 added, so both take their defaults
+        check("after-new-settings-default", Journals.operatorLevel() == Journals.DEFAULT_OPERATOR_LEVEL && journal.giveOnJoin()
+                && !Files.readString(CONFIG).contains("operator_level"), "level " + Journals.operatorLevel()
+                + ", give on join " + journal.giveOnJoin());
         check("after-no-second-copy", books(veteran) == 2, "written books held: " + books(veteran));
 
         ItemStack old = find(veteran, title);
@@ -115,14 +121,18 @@ class UpgradeProbe {
         String first = Files.readAllLines(CONTENT).stream().filter(line -> !line.isBlank()).findFirst().orElse("").trim();
         veteran.getInventory().clearContent();
         veteran.setItemInHand(InteractionHand.MAIN_HAND, old.copy());
-        JournalProbe.use(server, veteran, InteractionHand.MAIN_HAND);
+        ProbeSupport.use(server, veteran, InteractionHand.MAIN_HAND);
         check("after-old-book-refreshes", current(veteran.getItemInHand(InteractionHand.MAIN_HAND), title, author, first),
-                "main hand reads: " + JournalProbe.text(veteran.getItemInHand(InteractionHand.MAIN_HAND)).replace("\n", "\\n"));
+                "main hand reads: " + ProbeSupport.text(veteran.getItemInHand(InteractionHand.MAIN_HAND)).replace("\n", "\\n"));
+        // The old book carried no id; its refreshed copy is tagged as the default journal
+        check("after-refresh-tags-default", JournalBook.taggedId(old) == null
+                && Journal.DEFAULT_ID.equals(JournalBook.taggedId(veteran.getItemInHand(InteractionHand.MAIN_HAND))),
+                "old tag " + JournalBook.taggedId(old) + ", new tag " + JournalBook.taggedId(veteran.getItemInHand(InteractionHand.MAIN_HAND)));
         veteran.getInventory().clearContent();
         veteran.setItemInHand(InteractionHand.MAIN_HAND, legacy.copy());
-        JournalProbe.use(server, veteran, InteractionHand.MAIN_HAND);
+        ProbeSupport.use(server, veteran, InteractionHand.MAIN_HAND);
         check("after-legacy-book-refreshes", current(veteran.getItemInHand(InteractionHand.MAIN_HAND), title, author, first),
-                "main hand reads: " + JournalProbe.text(veteran.getItemInHand(InteractionHand.MAIN_HAND)).replace("\n", "\\n"));
+                "main hand reads: " + ProbeSupport.text(veteran.getItemInHand(InteractionHand.MAIN_HAND)).replace("\n", "\\n"));
 
         List<String> joinListNow = Files.readAllLines(JOIN_LIST);
         check("after-join-list-kept", joinListBefore.contains(veteran.getStringUUID()) && joinListNow.containsAll(joinListBefore),

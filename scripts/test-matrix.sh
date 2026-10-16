@@ -46,7 +46,8 @@ INSTALLER=1.1.2
 BOOT_TIMEOUT=${BOOT_TIMEOUT:-300}
 PROBE_TIMEOUT=${PROBE_TIMEOUT:-60}
 PARALLEL=${PARALLEL:-4}
-EXPECT_CHECKS=27
+# How many checks must pass is not set here: each probe run announces it on its START line
+# ("expect=N"), because the probe is built per jar and the 1.21.6+ jars carry the dialog checks.
 ALL_VERSIONS=(1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10 1.21.11
 	26.1 26.1.1 26.1.2 26.2 26.3)
 ERRORS='InvalidMixinException|MixinApplyError|MixinTransformerError|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|BootstrapMethodError|IncompatibleClassChangeError|ClassCastException|Exception in thread|\[TJ\] (An error|Failed)|TJ-PROBE\] stack trace'
@@ -155,19 +156,22 @@ workdir() { # version name: a fresh server directory with the launcher, the EULA
 	echo "$work"
 }
 
-# Prints nothing when <log> shows the probe finished with <expect> passes and no failure, error
-# or crash report; otherwise one line naming every problem.
-probe_problems() { # log expect workdir
-	local log=$1 expect=$2 done_line err problems=()
+# Prints nothing when <log> shows the probe finished with as many passes as its START line
+# announced and no failure, error or crash report; otherwise one line naming every problem.
+probe_problems() { # log workdir
+	local log=$1 expect done_line err problems=()
+	expect=$(grep -m1 -oE '\[TJ-PROBE\] START.* expect=[0-9]+' "$log" | grep -oE '[0-9]+$')
 	done_line=$(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+ fail=[0-9]+' "$log")
-	if [[ -z $done_line ]]; then
+	if [[ -z $expect ]]; then
+		problems+=("probe announced no check count")
+	elif [[ -z $done_line ]]; then
 		problems+=("probe never finished")
 	elif [[ $done_line != *"pass=$expect fail=0" ]]; then
-		problems+=("${done_line#*] }: $(grep -E '\[TJ-PROBE\] FAIL' "$log" | sed 's/.*\[TJ-PROBE\] FAIL //' | tr '\n' ';')")
+		problems+=("${done_line#*] } of $expect: $(grep -E '\[TJ-PROBE\] FAIL' "$log" | sed 's/.*\[TJ-PROBE\] FAIL //' | tr '\n' ';')")
 	fi
 	err=$(grep -m1 -E "$ERRORS" "$log" | oneline)
 	[[ $err ]] && problems+=("$err")
-	[[ -z "$(ls -A "$3/crash-reports" 2>/dev/null)" ]] || problems+=("crash report written")
+	[[ -z "$(ls -A "$2/crash-reports" 2>/dev/null)" ]] || problems+=("crash report written")
 	(( ${#problems[@]} )) && printf '%s; ' "${problems[@]}" | oneline
 	return 0
 }
@@ -201,7 +205,7 @@ run_one() { # jar probe version [--widen]
 		verdict=CRASH
 		evidence="crashed after ready: $(grep -m1 -E "$ERRORS" "$log" | oneline)"
 	else
-		evidence=$(probe_problems "$log" "$EXPECT_CHECKS" "$work")
+		evidence=$(probe_problems "$log" "$work")
 		if [[ $evidence ]]; then
 			verdict=FAIL
 		else
@@ -218,7 +222,7 @@ run_one() { # jar probe version [--widen]
 
 upgrade_one() { # old-jar new-jar probe version [config-dir]
 	local old=$1 new=$2 probe=$3 v=$4 fixture=${5:-} start=$SECONDS
-	local over nver label tag work phase log rc problems expect
+	local over nver label tag work phase log rc problems
 	IFS=$'\t' read -r _ over _ < <(helper modinfo "$old")
 	IFS=$'\t' read -r _ nver _ < <(helper modinfo "$new")
 	label="$over to $nver, $([[ $fixture ]] && echo customised || echo default) config"
@@ -247,8 +251,7 @@ upgrade_one() { # old-jar new-jar probe version [config-dir]
 		fi
 		(( rc == 1 )) && { result CRASH "$phase: never ready: $(grep -m1 -E "$ERRORS" "$log" | oneline)"; return; }
 		(( rc == 2 )) && { result CRASH "$phase: crashed after ready: $(grep -m1 -E "$ERRORS" "$log" | oneline)"; return; }
-		expect=$([[ $phase == before ]] && echo 2 || echo 8)
-		problems=$(probe_problems "$log" "$expect" "$work")
+		problems=$(probe_problems "$log" "$work")
 		[[ $problems ]] && { result FAIL "$phase: $problems"; return; }
 		# Replace the jar the way an admin would; the old one is moved aside, not deleted
 		if [[ $phase == before ]]; then
@@ -256,7 +259,11 @@ upgrade_one() { # old-jar new-jar probe version [config-dir]
 			cp "$new" "$work/mods/"
 		fi
 	done
-	result PASS "both boots clean: 2 checks on the old jar, 8 after the upgrade"
+	local checked=()
+	for phase in before after; do
+		checked+=("$(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+' "$work/$phase.log" | grep -oE '[0-9]+$')")
+	done
+	result PASS "both boots clean: ${checked[0]} checks on the old jar, ${checked[1]} after the upgrade"
 }
 
 upgrades() { # outdir new-jar probe [version]

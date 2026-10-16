@@ -1,8 +1,10 @@
 package com.gbti.utils;
 
-import com.gbti.FileManager;
+import java.util.Set;
 
 public class FormattedString {
+    private static final Set<String> COLORS = Set.of("black", "dark_blue", "dark_green", "dark_aqua", "dark_red",
+            "dark_purple", "gold", "gray", "dark_gray", "blue", "green", "aqua", "red", "light_purple", "yellow", "white");
 
     private String content;
     private int asterisks;
@@ -59,6 +61,6 @@ public class FormattedString {
 
     // One of the sixteen Minecraft colour names; anything else falls back to black
     public String getColor() {
-        return color != null && FileManager.COLORS.containsKey(color) ? FileManager.COLORS.get(color) : "black";
+        return color != null && COLORS.contains(color) ? color : "black";
     }
 }
