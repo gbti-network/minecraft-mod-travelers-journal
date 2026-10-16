@@ -9,6 +9,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.Connection;
@@ -153,10 +154,24 @@ public class JournalProbe implements ModInitializer {
         command(server, console, "travelers_journal give ProbeAlice");
         check("console-give", journals(alice) == 1, "journals: " + journals(alice));
 
-        // Using the journal swaps in the current text
+        // /journals is the same command under a shorter name, and for operators only too
+        CommandNode<CommandSourceStack> alias = server.getCommands().getDispatcher().getRoot().getChild("journals");
+        command(server, alice.createCommandSourceStack(), "journals give ProbeAlice");
+        check("alias-operators-only", alias != null && alias.canUse(console) && !alias.canUse(alice.createCommandSourceStack())
+                && journals(alice) == 1, "journals node " + alias + ", journals: " + journals(alice));
+        command(server, console, "journals give ProbeAlice");
+        check("alias-give", journals(alice) == 2, "journals: " + journals(alice));
+
+        // Either name on its own lists the subcommands instead of failing as incomplete
+        String usage = said(server, "travelers_journal");
+        check("usage", usage.contains("/journals give <players>") && usage.contains("/journals reload"), "said: " + usage.replace("\n", "\\n"));
+        String aliasUsage = said(server, "journals");
+        check("alias-usage", aliasUsage.equals(usage), "said: " + aliasUsage.replace("\n", "\\n"));
+
+        // Using the journal swaps in the current text (reloaded through the shorter name)
         ItemStack old = firstJournal(alice).copy();
         Files.writeString(CONTENT, String.join("\n", JOURNAL) + "\n" + UPDATED + "\n", StandardCharsets.UTF_8);
-        command(server, console, "travelers_journal reload");
+        command(server, console, "journals reload");
         alice.getInventory().clearContent();
         alice.setItemInHand(InteractionHand.MAIN_HAND, old.copy());
         use(server, alice, InteractionHand.MAIN_HAND);
@@ -214,6 +229,33 @@ public class JournalProbe implements ModInitializer {
 
     static void command(MinecraftServer server, CommandSourceStack source, String command) {
         server.getCommands().performPrefixedCommand(source, command);
+    }
+
+    // What a command says back to the console, success and failure alike
+    private static String said(MinecraftServer server, String command) {
+        StringBuilder said = new StringBuilder();
+        command(server, server.createCommandSourceStack().withSource(new CommandSource() {
+            @Override
+            public void sendSystemMessage(Component message) {
+                said.append(message.getString()).append('\n');
+            }
+
+            @Override
+            public boolean acceptsSuccess() {
+                return true;
+            }
+
+            @Override
+            public boolean acceptsFailure() {
+                return true;
+            }
+
+            @Override
+            public boolean shouldInformAdmins() {
+                return false;
+            }
+        }), command);
+        return said.toString();
     }
 
     // The mock players join the overworld. Entity.level() is not used: its intermediary name

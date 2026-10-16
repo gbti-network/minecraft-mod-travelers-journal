@@ -51,7 +51,8 @@ You need JDK 25. It also builds the 1.21.x jars, which target Java 21.
 `scripts/test-matrix.sh` boots every jar on a real Fabric server for every Minecraft version from
 1.21 to 26.3, with the probe test mod in `src/probe` beside it. The probe joins mock players and
 checks that a new player gets the journal once, that the text and formatting are right, that
-reload and use refresh it, and that only operators can run the command. Each jar must pass inside
+reload and use refresh it, and that only operators can run the command, under either of its
+names (`/travelers_journal` and `/journals`). Each jar must pass inside
 its declared range, and Fabric must refuse it everywhere else. It runs on Linux or WSL:
 
 ```bash

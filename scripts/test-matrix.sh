@@ -46,7 +46,7 @@ INSTALLER=1.1.2
 BOOT_TIMEOUT=${BOOT_TIMEOUT:-300}
 PROBE_TIMEOUT=${PROBE_TIMEOUT:-60}
 PARALLEL=${PARALLEL:-4}
-EXPECT_CHECKS=23
+EXPECT_CHECKS=27
 ALL_VERSIONS=(1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10 1.21.11
 	26.1 26.1.1 26.1.2 26.2 26.3)
 ERRORS='InvalidMixinException|MixinApplyError|MixinTransformerError|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|BootstrapMethodError|IncompatibleClassChangeError|ClassCastException|Exception in thread|\[TJ\] (An error|Failed)|TJ-PROBE\] stack trace'

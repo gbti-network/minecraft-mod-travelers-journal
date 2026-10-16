@@ -42,6 +42,16 @@ Replace the old jar in your `mods` folder with the new one and restart. The file
 
 Every release is tested upgrading from each earlier release.
 
+## ⌨️ Commands
+
+For operators and the server console. `/journals` is a shorter name for `/travelers_journal`, and the two work the same way.
+
+| Command | What it does |
+|---|---|
+| `/journals give <players>` | Gives each player the journal. A player with a full inventory finds it at their feet. |
+| `/journals reload` | Reads `config.txt` and `travelers_journal.md` again. Each journal shows the new text the next time it is used. |
+| `/journals` | Lists these commands. |
+
 ## 🔧 Configuration
 
 The mod can be configured through files in the `config/travelers-journal/` directory:
