@@ -6,6 +6,8 @@ Any changes made to the markdown file will auto update across all held copies of
 
 ## Core Functions
 - Server-side journal management for centralized control
+- Several named journals, each given on first join or only by command
+- An in-game journal manager on Minecraft 1.21.6 and later: `/journals` opens it for operators
 - Automatic distribution system that gives new players a journal on first join
 - Real-time content updates through simple markdown files
 - Built-in preview system for testing formatting

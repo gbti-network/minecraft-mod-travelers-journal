@@ -34,6 +34,10 @@ return InteractionResult.PASS;
 *///?}
 ```
 
+Whole features that a version lacks are left out by `build.gradle` instead: the in-game manager
+(`com/gbti/dialog/`, its mixin and `travelers_journal.mixins.json`) builds only for 1.21.6 and
+later, where Minecraft has server dialogs, and only those jars' `fabric.mod.json` lists the mixin.
+
 You need JDK 25. It also builds the 1.21.x jars, which target Java 21.
 
 1. Build every jar into `build/libs/`:
@@ -50,10 +54,19 @@ You need JDK 25. It also builds the 1.21.x jars, which target Java 21.
 
 `scripts/test-matrix.sh` boots every jar on a real Fabric server for every Minecraft version from
 1.21 to 26.3, with the probe test mod in `src/probe` beside it. The probe joins mock players and
-checks that a new player gets the journal once, that the text and formatting are right, that
-reload and use refresh it, and that only operators can run the command, under either of its
-names (`/travelers_journal` and `/journals`). Each jar must pass inside
-its declared range, and Fabric must refuse it everywhere else. It runs on Linux or WSL:
+checks, in phases:
+
+- `JournalProbe`: a new player gets the journal once, the text and formatting are right, reload
+  and use refresh it, and only operators can run the command, under either of its names
+  (`/travelers_journal` and `/journals`);
+- `JournalsProbe`: several journals, created by command and from files. It checks the give rules,
+  the id each book carries, delete and its backup, `default` being kept, and `operator_level`;
+- `DialogProbe`, on 1.21.6 and later: the manager, driven by the same click packets a client
+  sends, including refusals and the payload size limit.
+
+The probe announces how many checks it will run on its `START` line, and a jar passes only when
+all of them do. Each jar must pass inside its declared range, and Fabric must refuse it everywhere
+else. It runs on Linux or WSL:
 
 ```bash
 npm test
@@ -74,7 +87,9 @@ proves it on real servers:
 `src/probe/java/com/gbti/probe/UpgradeProbe.java` holds the checks:
 
 - nobody who already had the journal gets a second copy;
-- the old book and one under a legacy title are both recognised and refresh on use;
+- the old book and one under a legacy title are both recognised and refresh on use, as the
+  `default` journal;
+- settings added since (`operator_level`, `give_on_join`) take their defaults;
 - the join list keeps every entry;
 - new players still get the journal.
 
