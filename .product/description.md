@@ -12,7 +12,7 @@ Any changes made to the markdown file will auto update across all held copies of
 - Supports rich text formatting including colors and lists
 
 ## Technical Specifications
-- Platform: Minecraft 1.21.1
+- Platform: Minecraft 1.21 to 26.3 (one jar per range of versions)
 - Framework: Fabric
 - Dependencies: Fabric API
 - License: GPL-3.0

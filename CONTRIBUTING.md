@@ -21,16 +21,52 @@ We use GitHub to host code, to track issues and feature requests, as well as acc
 
 ## Build Process
 
-1. Clone the repository
-2. Install dependencies:
+One source tree builds a jar for each range of Minecraft versions, using
+[Stonecutter](https://stonecutter.kikugie.dev/). Each folder under `versions/` is one jar: its
+`gradle.properties` names the Minecraft version it builds against and the range its jar declares.
+Code that differs between versions is marked with Stonecutter comments, for example:
+
+```java
+//? if >=1.21.2 {
+return InteractionResult.PASS;
+//?} else {
+/*return InteractionResultHolder.pass(player.getItemInHand(hand));
+*///?}
+```
+
+You need JDK 25. It also builds the 1.21.x jars, which target Java 21.
+
+1. Build every jar into `build/libs/`:
    ```bash
-   npm install
+   ./gradlew buildAndCollect
    ```
-3. Build the mod:
-   ```bash
-   npm run build
-   ```
-4. Find the built jar in `.server/mods`
+   `npm run build` does the same, and `npm run build -- --deploy` also copies the 1.21.1 jar into
+   the GBTI server's `mods` folder.
+2. Build one jar: `./gradlew :1.21.11:build`.
+3. Work on one version in your IDE: `./gradlew "Set active project to 1.21.1"`. Run
+   `./gradlew "Reset active project"` before committing, so `src/` is committed in its 26.3 state.
+
+## Testing
+
+`scripts/test-matrix.sh` boots every jar on a real Fabric server for every Minecraft version from
+1.21 to 26.3, with the probe test mod in `src/probe` beside it. The probe joins mock players and
+checks that a new player gets the journal once, that the text and formatting are right, that
+reload and use refresh it, and that only operators can run the command. Each jar must pass inside
+its declared range, and Fabric must refuse it everywhere else. It runs on Linux or WSL:
+
+```bash
+npm test
+```
+
+## Releasing
+
+1. Set `mod_version` in `gradle.properties`, add a `## [<version>]` section to
+   `.product/changelog.md`, and commit both.
+2. `npm run release:stage` builds every jar, runs the test matrix and stages the jars, release notes
+   and checksums in `build/release/<version>/`.
+3. `npm run release:publish -- --dry-run` shows what publishing will do. Without `--dry-run` it tags
+   the commit, pushes, creates the GitHub release and uploads to Modrinth and CurseForge when
+   `MODRINTH_TOKEN` and `CURSEFORGE_TOKEN` are set. Planet Minecraft is updated by hand.
 
 ## Any contributions you make will be under the GNU General Public License v3.0
 

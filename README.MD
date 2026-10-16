@@ -1,6 +1,6 @@
 # 📖 Traveler's Journal
 
-A Minecraft mod that provides players with a special journal that updates its contents dynamically. Built with Fabric for Minecraft 1.21.1.
+A Minecraft mod that provides players with a special journal that updates its contents dynamically. Built with Fabric for every Minecraft version from 1.21 to 26.3.
 
 ## ✨ Features
 
@@ -13,10 +13,25 @@ A Minecraft mod that provides players with a special journal that updates its co
 ## 🚀 Installation
 
 1. Install [Fabric Loader](https://fabricmc.net/use/)
-2. Download the latest version of Traveler's Journal from the releases page
+2. Download the latest version of Traveler's Journal from the releases page, choosing the jar for your server's Minecraft version (see below)
 3. Place the .jar file in your server's `mods` folder
 4. Install the required dependencies:
    - Fabric API
+
+### Supported Minecraft versions
+
+Each release has one jar per range of Minecraft versions. The range is in the file name, and Fabric refuses a jar on any version outside it.
+
+| Minecraft | Jar |
+|---|---|
+| 1.21 to 1.21.1 | `travelers-journal-<version>+mc1.21-1.21.1.jar` |
+| 1.21.2 to 1.21.4 | `travelers-journal-<version>+mc1.21.2-1.21.4.jar` |
+| 1.21.5 to 1.21.10 | `travelers-journal-<version>+mc1.21.5-1.21.10.jar` |
+| 1.21.11 | `travelers-journal-<version>+mc1.21.11.jar` |
+| 26.1 to 26.2 | `travelers-journal-<version>+mc26.1-26.2.jar` |
+| 26.3 | `travelers-journal-<version>+mc26.3.jar` |
+
+The 1.21.x jars need Java 21 or newer, and the 26.x jars need Java 25, as Minecraft itself does.
 
 ## 🔧 Configuration
 
