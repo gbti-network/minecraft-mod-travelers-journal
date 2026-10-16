@@ -1,119 +1,59 @@
-plugins {
-	id 'fabric-loom' version '1.7-SNAPSHOT'
-	id 'maven-publish'
-}
+// Shared build script. Stonecutter evaluates it once per node (versions/<node>/), each time with
+// that node's gradle.properties layered over the root one.
 
-version = project.mod_version
+// Minecraft is obfuscated before 26.1. Those nodes use the remapping Loom with Mojang's names and
+// ship a jar remapped to intermediary; 26.1 and later use the plain Loom and ship the plain jar.
+def obfuscated = sc.current.parsed.matches('<26.1')
+apply plugin: obfuscated ? 'net.fabricmc.fabric-loom-remap' : 'net.fabricmc.fabric-loom'
+// The remapping Loom resolves mods through mod* configurations; the plain Loom uses Gradle's own
+def modImplementation = obfuscated ? 'modImplementation' : 'implementation'
+def modJarTask = obfuscated ? 'remapJar' : 'jar'
+def javaVersion = (project.java_version as String) as int
+
+version = "${project.mod_version}+${project.mc_label}"
 group = project.maven_group
 
 base {
 	archivesName = project.archives_base_name
 }
 
-repositories {
-	// Add repositories to retrieve artifacts from in here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
-	// for more information about repositories.
-}
-
-loom {
-	splitEnvironmentSourceSets()
-
-	mods {
-		"travelersjournal" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
-	}
-}
-
 dependencies {
-	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-	// Fabric API. This is technically optional, but you probably want it anyway.
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	
-	// Testing dependencies
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.1'
-	testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.1'
-	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.1'
-	testImplementation 'org.mockito:mockito-core:5.8.0'
-	testImplementation 'org.mockito:mockito-junit-jupiter:5.8.0'
-	
-	// Log4j dependencies for testing
-	testImplementation 'org.apache.logging.log4j:log4j-core:2.20.0'
-	testImplementation 'org.apache.logging.log4j:log4j-api:2.20.0'
-	
-	// Make Minecraft classes available in tests
-	testImplementation sourceSets.main.output
-	testImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	testImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	
-	// Add test configuration
-	configurations {
-		testImplementation.extendsFrom modImplementation
+	if (obfuscated) {
+		mappings loom.officialMojangMappings()
 	}
-}
-
-test {
-    useJUnitPlatform()
-    
-    // Configure test logging
-    testLogging {
-        events "passed", "skipped", "failed"
-        exceptionFormat "full"
-        showStandardStreams = true
-    }
-}
-
-processResources {
-    inputs.property "version", project.version
-
-    filesMatching("fabric.mod.json") {
-        expand "version": project.version
-    }
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 21
+	add modImplementation, "net.fabricmc:fabric-loader:${project.loader_version}"
+	add modImplementation, "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
 java {
-	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-	// if it is present.
-	// If you remove this line, sources will not be generated.
-	withSourcesJar()
-
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
+	sourceCompatibility = JavaVersion.toVersion(javaVersion)
+	targetCompatibility = JavaVersion.toVersion(javaVersion)
 }
 
-tasks.named('remapJar') {
-    archiveFileName = "${project.archives_base_name}.jar"
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = 'UTF-8'
+	it.options.release = javaVersion
+}
+
+def resourceProps = [version: project.version, mc_range: project.mc_range, java_version: javaVersion]
+processResources {
+	inputs.properties resourceProps
+	filesMatching('fabric.mod.json') {
+		expand resourceProps
+	}
 }
 
 jar {
 	from("LICENSE") {
-		rename { "${it}_${project.archives_base_name}"}
+		rename { "${it}_${project.archives_base_name}" }
 	}
 }
 
-// configure the maven publication
-publishing {
-	publications {
-		create("mavenJava", MavenPublication) {
-			artifactId = project.archives_base_name
-			from components.java
-		}
-	}
-
-	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
-	repositories {
-		// Add repositories to publish to here.
-	}
+// Copies this node's mod jar to <root>/build/libs/, so one directory holds every version's jar
+tasks.register('buildAndCollect', Copy) {
+	group = 'build'
+	description = 'Builds this node and copies its mod jar into the root build/libs/.'
+	from tasks.named(modJarTask).flatMap { it.archiveFile }
+	into rootProject.layout.buildDirectory.dir('libs')
 }

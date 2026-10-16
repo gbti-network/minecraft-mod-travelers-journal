@@ -46,3 +46,6 @@ travelers_journal.jar
 .plans 
 .env
 travelers-journal-*.jar
+# stonecutter / loom run directories
+run/
+versions/*/run/

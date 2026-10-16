@@ -1,0 +1,17 @@
+plugins {
+	id 'dev.kikugie.stonecutter'
+	// Loom on the root classpath without applying it. Every node inherits this classloader, so
+	// build.gradle can apply either plugin id from the same jar:
+	//   net.fabricmc.fabric-loom-remap  obfuscated 1.21.x: Mojang names, jar remapped to intermediary
+	//   net.fabricmc.fabric-loom        unobfuscated 26.x: no mappings, the plain jar ships
+	id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
+}
+
+stonecutter.active '26.3'
+
+// Builds every node and copies each mod jar into build/libs/ at the root
+tasks.register('buildAndCollect') {
+	group = 'build'
+	description = 'Builds every node and collects the mod jars into build/libs/.'
+	dependsOn stonecutter.tasks.named('buildAndCollect')
+}

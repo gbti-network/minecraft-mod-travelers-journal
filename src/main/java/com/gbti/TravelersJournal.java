@@ -4,17 +4,20 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
-import net.minecraft.command.argument.EntityArgumentType;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.TypedActionResult;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+//? if >=1.21.2 {
+import net.minecraft.world.InteractionResult;
+//?} else {
+/*import net.minecraft.world.InteractionResultHolder;
+*///?}
+//? if >=26.3 {
+import net.minecraft.util.Prediction;
+//?}
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.gbti.utils.StringUtils;
 
 public class TravelersJournal implements ModInitializer {
     public static final String MOD_ID = "travelers-journal";
@@ -35,87 +38,62 @@ public class TravelersJournal implements ModInitializer {
     public void onInitialize() {
         // Load configuration and journal content
         FileManager.readFiles();
-        
+
         // Register commands
         registerCommands();
-        
+
         // Register events
         registerEvents();
-        
+
         logDebug("Travelers Journal initialized");
     }
 
     private void registerEvents() {
         // Give new players the journal
         ServerEntityEvents.ENTITY_LOAD.register(((entity, world) -> {
-            if(entity instanceof ServerPlayerEntity player) {
-                if(!FileManager.joinList.contains(player.getUuidAsString()) && 
-                   !(player.getInventory().containsAny(itemStack -> 
-                       isJournalBook(itemStack)))) {
+            if(entity instanceof ServerPlayer player) {
+                if(!FileManager.joinList.contains(player.getStringUUID()) &&
+                   !player.getInventory().contains(JournalBook::isJournal)) {
                     giveBookToPlayer(player);
-                    FileManager.writeJoinList(player.getUuidAsString());
+                    FileManager.writeJoinList(player.getStringUUID());
                 }
             }
         }));
 
-        // Update journal when used
+        // Update journal when used: swap in a fresh copy, then let the book open as usual
         UseItemCallback.EVENT.register((player, world, hand) -> {
-            if(player instanceof ServerPlayerEntity serverPlayer) {
-                if(player.getStackInHand(hand).getItem().equals(Items.WRITTEN_BOOK) && 
-                   isJournalBook(player.getStackInHand(hand))) {
-                    player.setStackInHand(hand, ItemStack.EMPTY);
-                    replaceBookInPlayerInv(serverPlayer, player.getInventory().selectedSlot);
-                    return TypedActionResult.pass(player.getStackInHand(hand));
-                }
+            if(player instanceof ServerPlayer && JournalBook.isJournal(player.getItemInHand(hand))) {
+                player.setItemInHand(hand, JournalBook.create());
             }
-            return TypedActionResult.pass(player.getStackInHand(hand));
+            //? if >=1.21.2 {
+            return InteractionResult.PASS;
+            //?} else {
+            /*return InteractionResultHolder.pass(player.getItemInHand(hand));
+            *///?}
         });
     }
 
-    private boolean isJournalBook(ItemStack stack) {
-        if (!stack.getItem().equals(Items.WRITTEN_BOOK)) {
-            return false;
-        }
-        String bookTitle = stack.getName().getString();
-        logDebug("Checking book title: '{}' against current title: '{}' and legacy titles: {}", 
-                bookTitle, FileManager.journalTitle, FileManager.legacyTitles);
-        
-        // First check current title
-        if (bookTitle.equalsIgnoreCase(FileManager.journalTitle)) {
-            logDebug("Matched current title");
-            return true;
-        }
-        // Then check legacy titles
-        for (String legacyTitle : FileManager.legacyTitles) {
-            if (bookTitle.equalsIgnoreCase(legacyTitle)) {
-                logDebug("Matched legacy title: {}", legacyTitle);
-                return true;
-            }
-        }
-        logDebug("No title match found");
-        return false;
-    }
-
     private void registerCommands() {
-        CommandRegistrationCallback.EVENT.register(((dispatcher, registryAccess, environment) -> dispatcher.register(CommandManager.literal("travelers_journal")
-            .requires(source -> {
-                if(source instanceof ServerCommandSource serverSource) return serverSource.hasPermissionLevel(2);
-                else return false;
-            })
-            .then(CommandManager.literal("reload")
+        CommandRegistrationCallback.EVENT.register(((dispatcher, registryAccess, environment) -> dispatcher.register(Commands.literal("travelers_journal")
+            //? if >=1.21.11 {
+            .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+            //?} else {
+            /*.requires(source -> source.hasPermission(Commands.LEVEL_GAMEMASTERS))
+            *///?}
+            .then(Commands.literal("reload")
                 .executes(context -> {
                     FileManager.readFiles();
-                    context.getSource().sendFeedback(() -> Text.literal("Reloaded journal files"), false);
+                    context.getSource().sendSuccess(() -> Component.literal("Reloaded journal files"), false);
                     return 1;
                 })
             )
-            .then(CommandManager.literal("give")
-                .then(CommandManager.argument("targets", EntityArgumentType.players())
+            .then(Commands.literal("give")
+                .then(Commands.argument("targets", EntityArgument.players())
                     .executes(context -> {
-                        for (ServerPlayerEntity target : EntityArgumentType.getPlayers(context, "targets")) {
+                        for (ServerPlayer target : EntityArgument.getPlayers(context, "targets")) {
                             giveBookToPlayer(target);
                         }
-                        context.getSource().sendFeedback(() -> Text.literal("Given journal to specified players"), false);
+                        context.getSource().sendSuccess(() -> Component.literal("Given journal to specified players"), false);
                         return 1;
                     })
                 )
@@ -123,17 +101,12 @@ public class TravelersJournal implements ModInitializer {
         )));
     }
 
-    public static void replaceBookInPlayerInv(ServerPlayerEntity player, int slot) {
-        player.getServer().getCommandManager().executeWithPrefix(
-            player.getServer().getCommandSource(), 
-            "item replace entity " + player.getName().getString() + " container." + slot + " with " + StringUtils.getBookString()
-        );
-    }
-
-    public static void giveBookToPlayer(ServerPlayerEntity player) {
-        player.getServer().getCommandManager().executeWithPrefix(
-            player.getServer().getCommandSource(), 
-            "give " + player.getName().getString() + " " + StringUtils.getBookString()
-        );
+    // Like /give: into the inventory, or dropped at the player's feet when it is full
+    public static void giveBookToPlayer(ServerPlayer player) {
+        //? if >=26.3 {
+        player.getInventory().placeItemBackInInventory(JournalBook.create(), Prediction.SERVER_ONLY);
+        //?} else {
+        /*player.getInventory().placeItemBackInInventory(JournalBook.create());
+        *///?}
     }
 }

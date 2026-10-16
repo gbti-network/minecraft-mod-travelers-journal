@@ -1,64 +1,42 @@
 package com.gbti.utils;
 
-import com.gbti.FileManager;
-
 import java.util.ArrayList;
 import java.util.List;
 
 public class StringUtils {
 
-    public static String getBookString() {
-        String bookString = "written_book[written_book_content={pages:['[[";
-        final int MAX_LINES_PER_PAGE = 14;
-        int currentLineCount = 0;
-        StringBuilder currentPage = new StringBuilder();
+    public static final int MAX_LINES_PER_PAGE = 14;
 
-        for (String line : FileManager.lines) {
+    /**
+     * Splits the journal's lines into pages. A page is a list of lines and a line is a list of
+     * formatted runs. A page breaks at a "[page]" line or after MAX_LINES_PER_PAGE lines.
+     */
+    public static List<List<List<FormattedString>>> getPages(List<String> lines) {
+        List<List<List<FormattedString>>> pages = new ArrayList<>();
+        List<List<FormattedString>> currentPage = new ArrayList<>();
+
+        for (String line : lines) {
             // Check for page break marker
             if (line.trim().equals("[page]")) {
-                // Start a new page
-                if (currentPage.length() > 0) {
-                    bookString += currentPage.toString();
-                    bookString = bookString.substring(0, bookString.length() - 1);
-                    bookString += "]]','[[";
-                    currentPage = new StringBuilder();
-                    currentLineCount = 0;
+                if (!currentPage.isEmpty()) {
+                    pages.add(currentPage);
+                    currentPage = new ArrayList<>();
                 }
                 continue;
             }
 
-            List<FormattedString> formattedLine = getFormattedLine(line);
-            
-            // Build the line content
-            StringBuilder lineContent = new StringBuilder();
-            for (FormattedString formattedString : formattedLine) {
-                lineContent.append(formattedString.toBookString()).append(",");
+            if (currentPage.size() >= MAX_LINES_PER_PAGE) {
+                pages.add(currentPage);
+                currentPage = new ArrayList<>();
             }
-            lineContent.append("\"\\\\n\",");
-
-            // Check if we need a new page based on line count
-            if (currentLineCount >= MAX_LINES_PER_PAGE) {
-                // Add current page to book and start new page
-                bookString += currentPage.toString();
-                bookString = bookString.substring(0, bookString.length() - 1);
-                bookString += "]]','[[";
-                currentPage = new StringBuilder();
-                currentLineCount = 0;
-            }
-
-            // Add line to current page
-            currentPage.append(lineContent);
-            currentLineCount++;
+            currentPage.add(getFormattedLine(line));
         }
 
-        // Add the last page
-        if (currentPage.length() > 0) {
-            bookString += currentPage.toString();
-            bookString = bookString.substring(0, bookString.length() - 7);
+        // Add the last page, or one empty page for an empty journal
+        if (!currentPage.isEmpty() || pages.isEmpty()) {
+            pages.add(currentPage);
         }
-
-        bookString += "]]'],title:\"" + FileManager.journalTitle + "\",author:\"" + FileManager.journalAuthor + "\"}]";
-        return bookString;
+        return pages;
     }
 
     public static List<FormattedString> getFormattedLine(String line) {

@@ -12,11 +12,11 @@
     "atwellpub"
   ],
   "contact": {
-    "homepage": "https://fabricmc.net/",
-    "sources": "https://github.com/FabricMC/fabric-example-mod"
+    "homepage": "https://gbti.network/projects/travelers-journal/",
+    "sources": "https://github.com/gbti-network/minecraft-mod-travelers-journal"
   },
-  "license": "MIT",
-  "icon": "assets/travelers-journal/icon.png",
+  "license": "GPL-3.0",
+  "icon": "assets/travelers_journal/icon.png",
   "environment": "server",
   "entrypoints": {
     "main": [
@@ -25,8 +25,8 @@
   },
   "depends": {
     "fabricloader": ">=0.16.5",
-    "minecraft": ">=1.21 <1.21.2",
-    "java": ">=21",
+    "minecraft": "${mc_range}",
+    "java": ">=${java_version}",
     "fabric-api": "*"
   }
 }

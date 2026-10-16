@@ -7,8 +7,7 @@ public class FormattedString {
     private String content;
     private int asterisks;
     private boolean underlined;
-    private String color;
-    private boolean lastWasQuote = false;
+    private String color = "";
 
     public FormattedString(String content) {
         this.content = content;
@@ -34,30 +33,8 @@ public class FormattedString {
         return content;
     }
 
-    public void setContent(String content) {
-        // Replace quotes with Unicode quotation marks
-        if (content != null) {
-            StringBuilder result = new StringBuilder();
-            for (int i = 0; i < content.length(); i++) {
-                char c = content.charAt(i);
-                if (c == '\'') {
-                    result.append(lastWasQuote ? '\u2019' : '\u2018'); // U+2018 LEFT or U+2019 RIGHT SINGLE QUOTE
-                    lastWasQuote = !lastWasQuote;
-                } else if (c == '"') {
-                    result.append(lastWasQuote ? '\u201D' : '\u201C'); // U+201C LEFT or U+201D RIGHT DOUBLE QUOTE
-                    lastWasQuote = !lastWasQuote;
-                } else {
-                    result.append(c);
-                }
-            }
-            this.content = result.toString();
-        } else {
-            this.content = content;
-        }
-    }
-
     public void addChar(char suffix) {
-        this.setContent(this.content + suffix);
+        this.content = this.content + suffix;
     }
 
     public int getAsterisks() {
@@ -68,9 +45,20 @@ public class FormattedString {
         this.asterisks = asterisks;
     }
 
-    public String toBookString() {
-        return "{\"text\":\"" + this.content + "\",\"underlined\":" + this.underlined + ",\"bold\":"
-                + (asterisks >=2) + ",\"italic\":" + (asterisks % 2 == 1) + ",\"color\":\""
-                + ((!color.isEmpty() && FileManager.COLORS.containsKey(this.color)) ? FileManager.COLORS.get(this.color) : "black") + "\"}";
+    public boolean isBold() {
+        return asterisks >= 2;
+    }
+
+    public boolean isItalic() {
+        return asterisks % 2 == 1;
+    }
+
+    public boolean isUnderlined() {
+        return underlined;
+    }
+
+    // One of the sixteen Minecraft colour names; anything else falls back to black
+    public String getColor() {
+        return color != null && FileManager.COLORS.containsKey(color) ? FileManager.COLORS.get(color) : "black";
     }
 }
