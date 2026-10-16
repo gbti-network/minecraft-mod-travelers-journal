@@ -2,6 +2,7 @@ package com.gbti.probe;
 
 import com.gbti.Journal;
 import com.gbti.Journals;
+import com.gbti.dialog.BookLayout;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -46,7 +47,7 @@ import static com.gbti.probe.ProbeSupport.oneLine;
  * sends back is read from the mock player's channel.
  */
 final class DialogProbe {
-    static final int CHECKS = 11;
+    static final int CHECKS = 12;
     private static final Path FOLDERS = Path.of("config/travelers-journal/journals");
     private static final Path MADE = FOLDERS.resolve("probe-dialog");
     private static final Path LONG = FOLDERS.resolve("probe-long");
@@ -93,6 +94,17 @@ final class DialogProbe {
         click("preview", form("probe-dialog", "Saved by dialog", "Probe", true, "Page one\n[page]\nPage two\n[page]\nPage three"));
         checks.check("dialog-preview", shown instanceof NoticeDialog && body().contains("Page 1 of 3") && body().contains("Page 3 of 3")
                 && body().contains("Page two") && Files.readString(MADE.resolve("journal.md")).equals(text), "shown " + describe());
+
+        // The client centres dialog text, so each page line is wrapped at the book's width and
+        // padded to it; past the book's 14 lines a page says what will not show
+        String paragraph = "A long paragraph that the book wraps over several lines, word by word, the way a player reads it.";
+        String crowded = paragraph + "\n" + String.join("\n", java.util.Collections.nCopies(13, "Short line"));
+        click("preview", form("probe-dialog", "Saved by dialog", "Probe", true, crowded));
+        List<Integer> widths = shown instanceof NoticeDialog && common().body().get(0) instanceof PlainMessage page
+                ? BookLayout.lineWidths(page.contents()) : List.of();
+        boolean padded = widths.size() == 1 + BookLayout.PAGE_LINES
+                && widths.stream().allMatch(width -> width >= BookLayout.PAGE_WIDTH - 4 && width <= BookLayout.PAGE_WIDTH);
+        checks.check("dialog-preview-layout", padded && body().contains("will not show"), "line widths " + widths + ", shown " + describe());
 
         // The default journal is switched off, never deleted, so its editor has no Delete
         click("edit", form(Journal.DEFAULT_ID));

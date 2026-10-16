@@ -29,8 +29,6 @@ import java.util.Optional;
 public final class JournalScreens {
     private static final int BUTTON = 200;
     private static final int HALF = 150;
-    // A written book page is about 114 units wide
-    private static final int PAGE = 114;
 
     private JournalScreens() {
     }
@@ -118,14 +116,20 @@ public final class JournalScreens {
                 Widgets.button("Delete", HALF, "delete", target), Widgets.button("Keep it", HALF, "edit", target)));
     }
 
-    // Each page under a grey "Page n of m", book-page wide; Back returns the unsaved values
+    // Each page laid out as the book shows it: left-aligned, wrapped at the book's width, its page
+    // number at the top right, and lines past the book's 14 named. Back returns the unsaved values.
     public static void preview(ServerPlayer player, Journal journal, Form form) {
         List<String> lines = form.text() == null ? journal.lines() : Arrays.asList(form.text().split("\n", -1));
         List<Component> pages = JournalBook.pages(lines, true);
         List<DialogBody> body = new ArrayList<>();
         for (int i = 0; i < pages.size(); i++) {
-            body.add(Widgets.line(grey("Page " + (i + 1) + " of " + pages.size()), PAGE));
-            body.add(Widgets.line(pages.get(i), PAGE));
+            BookLayout.Page page = BookLayout.layout(pages.get(i), grey("Page " + (i + 1) + " of " + pages.size()));
+            body.add(Widgets.line(page.text(), BookLayout.MESSAGE_WIDTH));
+            if (page.cutOff() > 0) {
+                String lost = page.cutOff() == 1 ? "1 more line" : page.cutOff() + " more lines";
+                body.add(Widgets.line(Component.literal("The book shows " + BookLayout.PAGE_LINES + " lines a page, so " + lost
+                        + " on this page will not show. Start a new page with [page].").withStyle(ChatFormatting.RED)));
+            }
         }
         String title = form.title().isEmpty() ? journal.title() : form.title();
         Widgets.open(player, new NoticeDialog(Widgets.common(Component.literal(title), body, List.of()),
