@@ -3,11 +3,9 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "release": "node scripts/release.js",
     "build": "node scripts/build.js",
-    "test": "./gradlew buildAndCollect && scripts/test-matrix.sh libs build/test-matrix/latest build/libs"
-  },
-  "dependencies": {
-    "dotenv": "^16.4.7"
+    "test": "./gradlew buildAndCollect && scripts/test-matrix.sh libs build/test-matrix/latest build/libs",
+    "release:stage": "node scripts/release.js stage",
+    "release:publish": "node scripts/release.js publish"
   }
 }
