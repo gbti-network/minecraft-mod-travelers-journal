@@ -64,6 +64,9 @@ public class TravelersJournal implements ModInitializer {
                 Journal journal = JournalBook.journalOf(player.getItemInHand(hand));
                 if (journal != null) {
                     player.setItemInHand(hand, JournalBook.create(journal));
+                    // Send the new copy now. Vanilla opens the book straight after this, and the
+                    // client opens the copy it holds, so the usual end-of-tick sync would show the old text
+                    player.containerMenu.broadcastChanges();
                 }
             }
             //? if >=1.21.2 {
