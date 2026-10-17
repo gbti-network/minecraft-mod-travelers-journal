@@ -5,10 +5,16 @@ import com.gbti.JournalBook;
 import com.gbti.Journals;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LecternBlock;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.LecternBlockEntity;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,16 +32,21 @@ import static com.gbti.probe.ProbeSupport.use;
  * a later Minecraft, where books are item components instead of NBT. The harness runs the old
  * version's jar on a new world, then opens that world on the later version with its jar.
  *
- * "world-before" gives a player the default journal and a named one, then logs them out.
+ * "world-before" gives a player the default journal and a named one, puts copies of the named one
+ * in a chest and on a lectern, then logs the player out.
  *
  * "world-after" logs the player back in, so Minecraft upgrades their saved inventory, and checks
- * that both books still belong to their journals, kept their pages, and refresh when used.
+ * that both books still belong to their journals, kept their pages, and refresh when used, and
+ * that the chest's and the lectern's copies came through the chunk upgrade the same way.
  */
 final class WorldUpgradeProbe {
     private static final Path WELCOME = Path.of("config/travelers-journal/journals/probe-welcome");
     private static final String PLAYER = "ProbeTraveller";
     private static final String WELCOME_TEXT = "**Welcome** aboard";
     private static final String REFRESHED_TEXT = "Welcome back, after the upgrade";
+    // In the force-loaded spawn chunk, just above the flat world's grass
+    private static final BlockPos CHEST = new BlockPos(4, -59, 4);
+    private static final BlockPos LECTERN = new BlockPos(6, -59, 4);
 
     private final boolean before;
     private final ProbeSupport.Checks checks = new ProbeSupport.Checks();
@@ -49,7 +60,7 @@ final class WorldUpgradeProbe {
 
     void register() {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            ProbeSupport.LOG.info("[TJ-PROBE] START {} expect={}", before ? "world-before" : "world-after", before ? 1 : 3);
+            ProbeSupport.LOG.info("[TJ-PROBE] START {} expect={}", before ? "world-before" : "world-after", before ? 2 : 4);
             command(server, server.createCommandSourceStack(), "forceload add -32 -32 31 31");
             joinCountdown = JournalProbe.JOIN_TICKS;
         });
@@ -87,6 +98,17 @@ final class WorldUpgradeProbe {
         checks.check("world-before-carries", copies(player, Journals.defaultJournal()) == 1 && copies(player, welcome) == 1
                         && "probe-welcome".equals(JournalBook.taggedId(firstCopy(player, welcome))),
                 "default " + copies(player, Journals.defaultJournal()) + ", welcome " + copies(player, welcome));
+        // Copies kept in the world, which the next version upgrades with the chunk, not the player
+        ServerLevel level = server.overworld();
+        level.setBlockAndUpdate(CHEST, Blocks.CHEST.defaultBlockState());
+        if (level.getBlockEntity(CHEST) instanceof ChestBlockEntity chest) chest.setItem(0, JournalBook.create(welcome));
+        level.setBlockAndUpdate(LECTERN, Blocks.LECTERN.defaultBlockState().setValue(LecternBlock.HAS_BOOK, true));
+        if (level.getBlockEntity(LECTERN) instanceof LecternBlockEntity lectern) {
+            lectern.setBook(JournalBook.create(welcome));
+            lectern.setChanged();
+        }
+        checks.check("world-before-stored", "probe-welcome".equals(JournalBook.taggedId(chestCopy(server)))
+                && "probe-welcome".equals(JournalBook.taggedId(lecternCopy(server))), "chest " + chestCopy(server) + ", lectern " + lecternCopy(server));
         server.getPlayerList().remove(player); // logging out saves the player for the next boot
     }
 
@@ -102,6 +124,12 @@ final class WorldUpgradeProbe {
         if (welcome == null) return;
         ItemStack copy = firstCopy(player, welcome).copy();
         checks.check("world-after-pages-kept", text(copy).startsWith("Welcome aboard"), "pages read: " + oneLine(text(copy)));
+        ItemStack inChest = chestCopy(server);
+        ItemStack onLectern = lecternCopy(server);
+        checks.check("world-after-stored-kept", "probe-welcome".equals(JournalBook.taggedId(inChest)) && text(inChest).startsWith("Welcome aboard")
+                        && "probe-welcome".equals(JournalBook.taggedId(onLectern)) && text(onLectern).startsWith("Welcome aboard"),
+                "chest " + JournalBook.taggedId(inChest) + " reads " + oneLine(text(inChest)) + "; lectern " + JournalBook.taggedId(onLectern)
+                        + " reads " + oneLine(text(onLectern)));
 
         // The upgraded copy refreshes like any other
         Files.writeString(WELCOME.resolve("journal.md"), REFRESHED_TEXT + "\n", StandardCharsets.UTF_8);
@@ -113,5 +141,13 @@ final class WorldUpgradeProbe {
         checks.check("world-after-refreshes", text(held).contains(REFRESHED_TEXT) && "probe-welcome".equals(JournalBook.taggedId(held)),
                 "held reads: " + oneLine(text(held)));
         server.getPlayerList().remove(player);
+    }
+
+    private static ItemStack chestCopy(MinecraftServer server) {
+        return server.overworld().getBlockEntity(CHEST) instanceof ChestBlockEntity chest ? chest.getItem(0) : ItemStack.EMPTY;
+    }
+
+    private static ItemStack lecternCopy(MinecraftServer server) {
+        return server.overworld().getBlockEntity(LECTERN) instanceof LecternBlockEntity lectern ? lectern.getBook() : ItemStack.EMPTY;
     }
 }

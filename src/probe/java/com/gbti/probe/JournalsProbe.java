@@ -32,7 +32,7 @@ import static com.gbti.probe.ProbeSupport.use;
  * marked, tagged with their id, listed, deleted with a backup, and the default journal kept safe.
  */
 final class JournalsProbe {
-    static final int CHECKS = 19;
+    static final int CHECKS = 20;
     private static final Path ROOT = Path.of("config/travelers-journal");
     private static final Path CONFIG = ROOT.resolve("config.txt");
     private static final Path JOIN_LIST = ROOT.resolve("joinlist.txt");
@@ -150,7 +150,7 @@ final class JournalsProbe {
         Journals.save(Journals.defaultJournal(), "Traveler's Journal", standard.author(), true, null);
 
         // Pages break where the book wraps them: no page holds more than the book shows, and no
-        // text is lost. Before 1.3.0 this whole section was one page whose last lines were hidden.
+        // text is lost. Before 2.0.0 this whole section was one page whose last lines were hidden.
         String paragraph = "This paragraph is long enough that the book wraps it over several lines, so the page fills before its fourteenth line.";
         List<String> crowded = new ArrayList<>(List.of(paragraph));
         for (int i = 1; i <= 13; i++) crowded.add("Line " + i);
@@ -168,6 +168,21 @@ final class JournalsProbe {
         checks.check("long-paragraph-continues", longPages.size() >= 2 && BookFont.bookLines(longPages.get(0)) == BookFont.PAGE_LINES
                 && rejoined.equals(longParagraph), "pages " + longPages.size() + ", book lines "
                 + longPages.stream().map(BookFont::bookLines).toList() + ", text kept " + rejoined.equals(longParagraph));
+
+        // A title longer than a book holds, as an admin may type it in a file, is cut to 32
+        // characters and the book is still given (the packet check then encodes that book)
+        String longTitle = "The Traveler's Very Long Journal Title";
+        Path longFolder = ROOT.resolve("journals/probe-long-title");
+        Files.createDirectories(longFolder);
+        Files.writeString(longFolder.resolve("journal.txt"), "title=" + longTitle + "\nauthor=Probe\n", StandardCharsets.UTF_8);
+        Files.writeString(longFolder.resolve("journal.md"), "A journal with a long title\n", StandardCharsets.UTF_8);
+        said(server, "journals reload");
+        Journal titled = Journals.get("probe-long-title");
+        said(server, "journals give ProbeBob probe-long-title");
+        JournalBook.Contents shortened = JournalBook.contents(firstCopy(bob, titled));
+        checks.check("long-title-shortened", titled != null && copies(bob, titled) == 1 && shortened != null
+                && shortened.title().equals(longTitle.substring(0, Journals.TITLE_MAX)),
+                "copies " + copies(bob, titled) + ", title " + (shortened == null ? "none" : shortened.title()));
 
         server.getPlayerList().remove(bob);
     }
@@ -191,6 +206,7 @@ final class JournalsProbe {
         }
         lines.add("operator_level=" + level);
         Files.write(CONFIG, lines, StandardCharsets.UTF_8);
-        Journals.reload();
+        // Through the command a server owner runs, which also resends the players' command trees
+        said(server, "journals reload");
     }
 }

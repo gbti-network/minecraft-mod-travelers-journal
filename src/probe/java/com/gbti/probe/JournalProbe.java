@@ -4,6 +4,7 @@ import com.gbti.Journal;
 import com.gbti.JournalBook;
 import com.gbti.Journals;
 import com.mojang.brigadier.tree.CommandNode;
+import io.netty.channel.embedded.EmbeddedChannel;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -12,6 +13,8 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundOpenBookPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -55,7 +58,7 @@ public class JournalProbe implements ModInitializer {
     // checks run once its own chunks have loaded, well short of the 15 s keep-alive timeout.
     static final int JOIN_TICKS = 40;
     static final int SETTLE_TICKS = 60;
-    static final int CHECKS = 28;
+    static final int CHECKS = 31;
     // The dialog checks exist on the jars that have dialogs, 1.21.6 and later
     //? if >=1.21.6 {
     private static final int DIALOG_CHECKS = DialogProbe.CHECKS;
@@ -95,8 +98,8 @@ public class JournalProbe implements ModInitializer {
         }
         // No release before 2.0.0 ran below 1.20.5, so those jars have no upgrade test
         //? if >=1.20.5 {
-        if (mode.startsWith("upgrade-")) {
-            new UpgradeProbe(mode.equals("upgrade-before")).register();
+        if (mode.startsWith("upgrade-") || mode.startsWith("downgrade-")) {
+            new UpgradeProbe(mode).register();
             return;
         }
         //?}
@@ -119,6 +122,8 @@ public class JournalProbe implements ModInitializer {
                 //? if >=1.21.6 {
                 checks.guarded(() -> new DialogProbe(checks).run(server));
                 //?}
+                // Last, so it covers every packet the checks above made the server send
+                checks.check("packets-encode", PacketCheck.FAILURES.isEmpty() && PacketCheck.encoded > 0, PacketCheck.summary());
                 checks.done();
             }
         });
@@ -137,7 +142,7 @@ public class JournalProbe implements ModInitializer {
         Journal journal = Journals.defaultJournal();
         checks.check("first-boot-defaults", journal.lines().equals(DEFAULT_TEXT) && journal.legacyTitles().contains("Traveller's Journal"),
                 "lines " + journal.lines() + ", legacy titles " + journal.legacyTitles());
-        // A new install's config names the two settings 1.3.0 added, and not the unused give_at_spawn
+        // A new install's config names the two settings 2.0.0 added, and not the unused give_at_spawn
         String config = Files.readString(CONFIG);
         checks.check("first-boot-config", config.contains("give_on_join=true\n") && config.contains("operator_level=2\n")
                 && !config.contains("give_at_spawn"), "config.txt: " + oneLine(config));
@@ -171,6 +176,11 @@ public class JournalProbe implements ModInitializer {
         checks.check("default-black", colour(page, "Bold", ChatFormatting.BLACK), styleOf(page, "Bold").toString());
         checks.check("join-list", journal.joinList().contains(alice.getStringUUID())
                 && Files.readString(JOIN_LIST).contains(alice.getStringUUID()), "uuid missing from the join list");
+
+        // A player who logs out carrying the journal finds it again after the save, still tagged
+        alice = rejoin(server, alice, "ProbeAlice");
+        checks.check("rejoin-keeps-copy", copies(alice, journal) == 1 && Journal.DEFAULT_ID.equals(JournalBook.taggedId(firstCopy(alice, journal))),
+                "journals after rejoin: " + copies(alice, journal));
 
         // Rejoining gives no second copy, even with the first one gone
         alice.getInventory().clearContent();
@@ -206,7 +216,23 @@ public class JournalProbe implements ModInitializer {
         command(server, console, "journals reload");
         alice.getInventory().clearContent();
         alice.setItemInHand(InteractionHand.MAIN_HAND, old.copy());
+        // The client opens the copy it already holds, so the new one has to reach it before the
+        // book opens, or the player reads the old text once more
+        EmbeddedChannel channel = ProbeSupport.channel(alice);
+        alice.containerMenu.broadcastChanges();
+        while (channel.readOutbound() != null) {
+            // the setup's own slot update is not part of this
+        }
         use(server, alice, InteractionHand.MAIN_HAND);
+        int slotAt = -1;
+        int openAt = -1;
+        int index = 0;
+        for (Object message = channel.readOutbound(); message != null; message = channel.readOutbound(), index++) {
+            if (message instanceof ClientboundContainerSetSlotPacket && slotAt < 0) slotAt = index;
+            if (message instanceof ClientboundOpenBookPacket && openAt < 0) openAt = index;
+        }
+        checks.check("use-sends-book-first", openAt >= 0 && slotAt >= 0 && slotAt < openAt,
+                "new copy sent at " + slotAt + ", book opened at " + openAt + " (-1: never)");
         checks.check("use-refreshes", text(alice.getItemInHand(InteractionHand.MAIN_HAND)).contains(UPDATED),
                 "main hand reads: " + oneLine(text(alice.getItemInHand(InteractionHand.MAIN_HAND))));
 
@@ -219,7 +245,7 @@ public class JournalProbe implements ModInitializer {
         checks.check("offhand-refreshes", text(alice.getItemInHand(InteractionHand.OFF_HAND)).contains(UPDATED), "offhand not refreshed");
         checks.check("offhand-keeps-hotbar", main.getItem() == Items.STONE && main.getCount() == 7, "main hand now: " + main);
 
-        // A journal under a legacy title, as releases before 1.3.0 left them, is recognised and replaced
+        // A journal under a legacy title, as releases before 2.0.0 left them, is recognised and replaced
         ItemStack legacy = JournalBook.book("Travelers Journal", "Someone", List.of(Component.literal("old text")));
         alice.getInventory().clearContent();
         alice.setItemInHand(InteractionHand.MAIN_HAND, legacy);

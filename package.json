@@ -6,7 +6,8 @@
     "build": "node scripts/build.js",
     "test": "./gradlew buildAndCollect && scripts/test-matrix.sh libs build/test-matrix/latest build/libs",
     "test:upgrades": "./gradlew buildAndCollect && scripts/test-matrix.sh upgrades build/test-matrix/upgrades build/libs/travelers-journal-*+mc1.21-1.21.1.jar build/libs/travelers-journal-*+mc1.21-1.21.1-probe.jar 1.21.1",
-    "test:worlds": "./gradlew buildAndCollect && scripts/test-matrix.sh world-upgrades build/test-matrix/worlds build/libs/travelers-journal-*+mc1.21-1.21.1.jar build/libs/travelers-journal-*+mc1.21-1.21.1-probe.jar 1.21.1 build/libs/travelers-journal-*+mc1.20-1.20.1.jar build/libs/travelers-journal-*+mc1.20-1.20.1-probe.jar 1.20.1 build/libs/travelers-journal-*+mc1.20.2-1.20.4.jar build/libs/travelers-journal-*+mc1.20.2-1.20.4-probe.jar 1.20.4",
+    "test:worlds": "./gradlew buildAndCollect && scripts/test-matrix.sh world-upgrades build/test-matrix/worlds build/libs/travelers-journal-*+mc1.20-1.20.1.jar build/libs/travelers-journal-*+mc1.20-1.20.1-probe.jar 1.20.1 build/libs/travelers-journal-*+mc1.21-1.21.1.jar build/libs/travelers-journal-*+mc1.21-1.21.1-probe.jar 1.21.1 build/libs/travelers-journal-*+mc1.20.2-1.20.4.jar build/libs/travelers-journal-*+mc1.20.2-1.20.4-probe.jar 1.20.4 build/libs/travelers-journal-*+mc1.21-1.21.1.jar build/libs/travelers-journal-*+mc1.21-1.21.1-probe.jar 1.21.1",
+    "test:downgrades": "./gradlew buildAndCollect && scripts/test-matrix.sh downgrades build/test-matrix/downgrades build/libs/travelers-journal-*+mc1.21-1.21.1.jar build/libs/travelers-journal-*+mc1.21-1.21.1-probe.jar 1.21.1",
     "release:stage": "node scripts/release.js stage",
     "release:publish": "node scripts/release.js publish"
   }

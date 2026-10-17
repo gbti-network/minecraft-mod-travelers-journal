@@ -3,8 +3,8 @@
 // Linux or WSL only, because the test matrix is a bash script that boots real servers.
 //
 //   npm run release:stage                 build every node, run the test matrix, bundle the jars,
-//                                         test the bundle on every version, from every past
-//                                         release and through older worlds, and stage it in
+//                                         test the bundle on every version, from and back to every
+//                                         past release and through world moves, and stage it in
 //                                         build/release/<version>/
 //   npm run release:publish [-- --dry-run]
 //                                         tag the staged commit, push it with the tag, create the
@@ -32,11 +32,16 @@ const MODRINTH_PROJECT = '6Uocsa4f';
 const MODRINTH_FABRIC_API = 'P7dR8mSH';
 const CURSEFORGE_PROJECT = 1743974;
 const USER_AGENT = 'gbti-network/minecraft-mod-travelers-journal (release script)';
-// Every release before 1.3.0 was built for 1.21.1, so that is where existing servers upgrade from
+// Every release before 2.0.0 was built for 1.21.1, so that is where existing servers upgrade from
 const UPGRADE_FROM_MINECRAFT = '1.21.1';
-// A server on 1.20.4 or older that moves to a later Minecraft finds its books turned from NBT into
-// item components; each such jar's world is opened here, with the jar that covers it
-const WORLD_UPGRADE_TO = '1.21.1';
+// Worlds moved to a later Minecraft must keep their journals, in inventories, chests and lecterns:
+// from NBT books (1.20.4 and older) to item components, across 1.21.5's change to stored text,
+// and into 26.x
+const WORLD_MOVES = [['1.20.1', '1.21.1'], ['1.20.4', '1.21.1'], ['1.21.1', '1.21.5'], ['1.21.5', '26.1'], ['1.20.1', '26.3']];
+// The probe's checks per passing cell, stated here as well as by the probe itself, so a phase that
+// quietly stops running fails the release instead of shrinking the count both sides agree on
+const CHECKS_BEFORE_MANAGER = 51;
+const CHECKS_WITH_MANAGER = 71;
 // Versions inside the supported span that no jar covers; the shipped jar must be refused there
 const UNCOVERED = ['1.20.5', '1.20.6'];
 
@@ -45,8 +50,8 @@ function fail(message) {
     process.exit(1);
 }
 
-function run(command, args) {
-    const result = spawnSync(command, args, { cwd: ROOT, stdio: 'inherit' });
+function run(command, args, env = {}) {
+    const result = spawnSync(command, args, { cwd: ROOT, stdio: 'inherit', env: { ...process.env, ...env } });
     if (result.status !== 0) fail(`${command} ${args.join(' ')} exited with ${result.status}`);
 }
 
@@ -105,6 +110,26 @@ function versionList(gameVersions) {
     return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
 }
 
+function expectedChecks(mc) {
+    return mcBefore(mc, '1.21.6') ? CHECKS_BEFORE_MANAGER : CHECKS_WITH_MANAGER;
+}
+
+// Every passing cell ran exactly the checks this file expects for its version
+function holdCounts(rows, what) {
+    const wrong = rows.filter(([, , verdict]) => verdict === 'PASS')
+        .map(([label, mc, , , evidence]) => [label, mc, Number(((evidence ?? '').match(/pass=(\d+)/) ?? [])[1])])
+        .filter(([, mc, ran]) => ran !== expectedChecks(mc));
+    if (wrong.length) fail(`${what}: ${wrong.map(([label, mc, ran]) => `${label} on ${mc} ran ${ran} checks, not ${expectedChecks(mc)}`).join('; ')}`);
+}
+
+// Past releases Modrinth does not list, such as a server's own build or a release not published
+// yet, go in .data/past-releases/ (never committed); the upgrade and downgrade tests take them too
+function localPast() {
+    const dir = path.join(ROOT, '.data', 'past-releases');
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir).filter(file => file.endsWith('.jar')).sort().map(file => path.join(dir, file));
+}
+
 function readTsv(file) {
     return fs.readFileSync(file, 'utf8').trim().split('\n').map(line => line.split('\t'));
 }
@@ -133,6 +158,7 @@ function stage() {
     run(path.join(SCRIPTS, 'test-matrix.sh'), ['matrix', matrixDir, ...pairs]);
 
     const results = readTsv(path.join(matrixDir, 'results.tsv'));
+    holdCounts(results, 'per-range matrix');
     // Each per-range jar passed inside its declared range and was refused everywhere else, so no
     // two of them claim a version
     const ranges = jars.map(file => {
@@ -159,19 +185,19 @@ function stage() {
     const expected = [...gameVersions.map(mc => [mc, 'PASS']), ...UNCOVERED.map(mc => [mc, 'REFUSED'])];
     const wrong = expected.filter(([mc, verdict]) => cells.find(([, v]) => v === mc)?.[2] !== verdict);
     if (wrong.length) fail(`${bundleFile} did not behave on ${wrong.map(([mc, verdict]) => `${mc} (expected ${verdict})`).join(', ')}`);
+    holdCounts(cells, bundleFile);
     console.log(`bundle: passed on ${gameVersions.length} versions, refused on ${UNCOVERED.join(' and ')}`);
 
     // Every existing server must keep its journal: upgrade each past release on the version they
-    // all ran on
-    run(path.join(SCRIPTS, 'test-matrix.sh'), ['upgrades', path.join(matrixDir, 'upgrades'),
-        bundle, probeOf(rangeFor(UPGRADE_FROM_MINECRAFT)), UPGRADE_FROM_MINECRAFT]);
+    // all ran on, then go back to each from this one
+    const past = { EXTRA_PAST: [...localPast(), process.env.EXTRA_PAST ?? ''].join(' ').trim() };
+    if (past.EXTRA_PAST) console.log(`past releases beside Modrinth's: ${past.EXTRA_PAST}`);
+    const upgradeProbe = probeOf(rangeFor(UPGRADE_FROM_MINECRAFT));
+    run(path.join(SCRIPTS, 'test-matrix.sh'), ['upgrades', path.join(matrixDir, 'upgrades'), bundle, upgradeProbe, UPGRADE_FROM_MINECRAFT], past);
+    run(path.join(SCRIPTS, 'test-matrix.sh'), ['downgrades', path.join(matrixDir, 'downgrades'), bundle, upgradeProbe, UPGRADE_FROM_MINECRAFT], past);
 
-    const olderWorlds = ranges.filter(r => mcBefore(r.game_versions.at(-1), '1.20.5'));
-    if (olderWorlds.length) {
-        run(path.join(SCRIPTS, 'test-matrix.sh'), ['world-upgrades', path.join(matrixDir, 'world-upgrades'),
-            bundle, probeOf(rangeFor(WORLD_UPGRADE_TO)), WORLD_UPGRADE_TO,
-            ...olderWorlds.flatMap(r => [bundle, probeOf(r), r.game_versions.at(-1)])]);
-    }
+    run(path.join(SCRIPTS, 'test-matrix.sh'), ['world-upgrades', path.join(matrixDir, 'world-upgrades'),
+        ...WORLD_MOVES.flatMap(([from, to]) => [bundle, probeOf(rangeFor(from)), from, bundle, probeOf(rangeFor(to)), to])]);
 
     fs.mkdirSync(releaseDir, { recursive: true });
     const data = fs.readFileSync(bundle);

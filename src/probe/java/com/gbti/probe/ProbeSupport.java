@@ -20,12 +20,31 @@ import net.minecraft.server.level.ServerPlayer;
 //? if >=1.20.2 {
 import net.minecraft.server.network.CommonListenerCookie;
 //?}
+//? if >=1.21.6 {
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.storage.TagValueInput;
+//?}
+//? if >=1.21.11 {
+import net.minecraft.server.players.NameAndId;
+//?}
+//? if >=1.21.6 <1.21.11 {
+/*import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.util.datafix.DataFixTypes;
+import net.minecraft.world.level.storage.LevelResource;
+*///?}
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -45,6 +64,7 @@ final class ProbeSupport {
         GameProfile profile = new GameProfile(uuid, name);
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         EmbeddedChannel channel = new EmbeddedChannel(connection);
+        channel.pipeline().addFirst(new PacketCheck.Encoder(server));
         CHANNELS.put(uuid, channel);
         // From 1.20.2 to 1.20.4 a connection reads its protocol from the channel before sending
         //? if >=1.20.2 <1.20.5 {
@@ -59,14 +79,43 @@ final class ProbeSupport {
         *///?}
         //? if >=1.20.2 {
         ServerPlayer player = new ServerPlayer(server, server.overworld(), profile, cookie.clientInformation());
-        server.getPlayerList().placeNewPlayer(connection, player, cookie);
         //?} else {
         /*ServerPlayer player = new ServerPlayer(server, server.overworld(), profile);
-        server.getPlayerList().placeNewPlayer(connection, player);
+        *///?}
+        // From 1.21.9 a login task reads the save before the player is placed, and placeNewPlayer no
+        // longer does, so a mock login reads it here as vanilla does
+        //? if >=1.21.11 {
+        server.getPlayerList().loadPlayerData(new NameAndId(profile))
+                .map(tag -> TagValueInput.create(ProblemReporter.DISCARDING, server.registryAccess(), tag))
+                .ifPresent(player::load);
+        //?} else if >=1.21.6 {
+        /*loadSave(server, player, uuid);
+        *///?}
+        //? if >=1.20.2 {
+        server.getPlayerList().placeNewPlayer(connection, player, cookie);
+        //?} else {
+        /*server.getPlayerList().placeNewPlayer(connection, player);
         *///?}
         return player;
     }
 
+    //? if >=1.21.6 <1.21.11 {
+    /*// The 1.21.6 build also runs on 1.21.9 and 1.21.10, where the login task's loadPlayerData is
+    // out of its reach, so it reads the save file the way that method does. On 1.21.6 to 1.21.8,
+    // placeNewPlayer then reads it a second time, to the same result.
+    private static void loadSave(MinecraftServer server, ServerPlayer player, UUID uuid) {
+        Path file = server.getWorldPath(LevelResource.PLAYER_DATA_DIR).resolve(uuid + ".dat");
+        if (!Files.exists(file)) return;
+        try {
+            CompoundTag tag = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
+            tag = DataFixTypes.PLAYER.updateToCurrentVersion(server.getFixerUpper(), tag, NbtUtils.getDataVersion(tag, -1));
+            player.load(TagValueInput.create(ProblemReporter.DISCARDING, server.registryAccess(), tag));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    *///?}
     // Logs out (which saves the player) and logs back in as a fresh entity loaded from disk
     static ServerPlayer rejoin(MinecraftServer server, ServerPlayer player, String name) {
         server.getPlayerList().remove(player);

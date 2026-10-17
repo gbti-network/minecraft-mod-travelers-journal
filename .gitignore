@@ -36,6 +36,7 @@ replay_*.log
 *.hprof
 *.jfr
 .snapshots/
+.data/
 scripts/.env
 node_modules/
 package-lock.json

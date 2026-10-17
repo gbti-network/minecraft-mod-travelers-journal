@@ -10,19 +10,24 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.network.protocol.common.ClientboundClearDialogPacket;
 import net.minecraft.network.protocol.common.ClientboundShowDialogPacket;
 import net.minecraft.network.protocol.common.ServerboundCustomClickActionPacket;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dialog.ActionButton;
 import net.minecraft.server.dialog.CommonDialogData;
 import net.minecraft.server.dialog.ConfirmationDialog;
 import net.minecraft.server.dialog.Dialog;
 import net.minecraft.server.dialog.Input;
 import net.minecraft.server.dialog.MultiActionDialog;
 import net.minecraft.server.dialog.NoticeDialog;
+import net.minecraft.server.dialog.action.Action;
+import net.minecraft.server.dialog.action.CustomAll;
 import net.minecraft.server.dialog.body.DialogBody;
 import net.minecraft.server.dialog.body.ItemBody;
 import net.minecraft.server.dialog.body.PlainMessage;
+import net.minecraft.server.dialog.input.BooleanInput;
 import net.minecraft.server.dialog.input.TextInput;
 import net.minecraft.server.level.ServerPlayer;
 //? if >=1.21.11 {
@@ -34,21 +39,25 @@ import net.minecraft.resources.Identifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 import static com.gbti.probe.ProbeSupport.command;
+import static com.gbti.probe.ProbeSupport.copies;
 import static com.gbti.probe.ProbeSupport.oneLine;
 
 /**
  * The in-game manager, on 1.21.6 and later only (the build leaves this file out of older jars).
- * A mock operator opens the dialogs by command and presses their buttons by sending the same
- * click packet a client sends, through vanilla's listener and the mod's mixin. What the server
- * sends back is read from the mock player's channel.
+ * A mock operator opens the dialogs by command and presses their buttons as a client does: each
+ * press takes the action and additions of a button in the dialog the server sent, overlays every
+ * input's value, and goes through the click packet's codec, vanilla's listener and the mod's mixin.
+ * What the server sends back is read from the mock player's channel.
  */
 final class DialogProbe {
-    static final int CHECKS = 14;
+    static final int CHECKS = 20;
     private static final Path FOLDERS = Path.of("config/travelers-journal/journals");
     private static final Path MADE = FOLDERS.resolve("probe-dialog");
     private static final Path LONG = FOLDERS.resolve("probe-long");
@@ -56,6 +65,7 @@ final class DialogProbe {
     private final ProbeSupport.Checks checks;
     private ServerPlayer carol;
     private Dialog shown;
+    private boolean cleared;
     private String chat = "";
 
     DialogProbe(ProbeSupport.Checks checks) {
@@ -84,50 +94,75 @@ final class DialogProbe {
                         .filter(label -> Journals.all().stream().anyMatch(journal -> journal.title().equals(label.getString())))
                         .allMatch(label -> colour(label, label.getString(), ChatFormatting.YELLOW));
 
+        press("Reload from files", Map.of());
+        checks.check("dialog-reload", title().equals("Traveler's Journals") && body().contains("Reloaded from files."), "shown " + describe());
+
         // Create, then Save, through the buttons
-        click("create", form("", "Dialog journal", "Probe", false, "Made in a dialog").putting("id", "probe-dialog"));
+        press("Create journal", Map.of());
+        checks.check("dialog-create-form", title().equals("New journal") && inputs().containsAll(List.of("id", "title", "author", "give", "text")),
+                "shown " + describe());
+        press("Create", Map.of("id", "probe-dialog", "title", "Dialog journal", "author", "Probe", "give", false, "text", "Made in a dialog"));
         checks.check("dialog-create", Journals.get("probe-dialog") != null
                 && Files.readString(MADE.resolve("journal.md")).equals("Made in a dialog\n") && body().contains("Created."),
                 "shown " + describe());
-        click("save", form("probe-dialog", "Saved by dialog", "Probe", true, "Line one\n[page]\nLine two"));
+        press("Save", Map.of("title", "Saved by dialog", "give", true, "text", "Line one\n[page]\nLine two"));
         Journal saved = Journals.get("probe-dialog");
         checks.check("dialog-save", saved != null && saved.title().equals("Saved by dialog") && saved.giveOnJoin()
                 && Files.readString(MADE.resolve("journal.md")).equals("Line one\n[page]\nLine two\n")
+                && Files.readString(MADE.resolve("journal.md.bak")).equals("Made in a dialog\n")
                 && body().contains("Saved. Copies refresh the next time players use them."), "shown " + describe());
 
         // The server checks every Save again: a 33-character title is refused and nothing changes
         String text = Files.readString(MADE.resolve("journal.md"));
-        click("save", form("probe-dialog", "x".repeat(33), "Probe", true, "Changed"));
+        press("Save", Map.of("title", "x".repeat(33), "text", "Changed"));
         checks.check("dialog-title-too-long", Files.readString(MADE.resolve("journal.md")).equals(text)
                 && body().contains("Book titles hold 32 characters. This one has 33. Nothing was saved.") && redLabel("title"),
                 "shown " + describe());
 
-        // Preview shows the unsaved text as pages and saves nothing
-        click("preview", form("probe-dialog", "Saved by dialog", "Probe", true, "Page one\n[page]\nPage two\n[page]\nPage three"));
+        // Preview shows the unsaved text as pages and saves nothing; Back returns to it unsaved
+        String pages = "Page one\n[page]\nPage two\n[page]\nPage three";
+        press("Preview", Map.of("title", "Saved by dialog", "text", pages));
         boolean previewIcon = hasIcon() && body().contains("3 pages, by Probe");
         checks.check("dialog-preview", shown instanceof NoticeDialog && body().contains("Page 1 of 3") && body().contains("Page 3 of 3")
                 && body().contains("Page two") && Files.readString(MADE.resolve("journal.md")).equals(text), "shown " + describe());
+        press("Back", Map.of());
+        checks.check("dialog-back-keeps-unsaved", shown instanceof MultiActionDialog && pages.equals(initial("text"))
+                && "Saved by dialog".equals(initial("title")) && Files.readString(MADE.resolve("journal.md")).equals(text),
+                "text box holds " + oneLine(String.valueOf(initial("text"))) + ", shown " + describe());
 
         // The client centres dialog text, so each page line is wrapped at the book's width and
         // padded to it. A section past the book's 14 lines now carries on on a second page, so
         // nothing is cut off
         String paragraph = "A long paragraph that the book wraps over several lines, word by word, the way a player reads it.";
         String crowded = paragraph + "\n" + String.join("\n", java.util.Collections.nCopies(13, "Short line"));
-        click("preview", form("probe-dialog", "Saved by dialog", "Probe", true, crowded));
+        press("Preview", Map.of("text", crowded));
         List<Integer> widths = shown instanceof NoticeDialog ? common().body().stream().filter(PlainMessage.class::isInstance)
                 .map(part -> BookLayout.lineWidths(((PlainMessage) part).contents())).findFirst().orElse(List.of()) : List.of();
         boolean padded = widths.size() == 1 + BookLayout.PAGE_LINES
                 && widths.stream().allMatch(width -> width >= BookLayout.PAGE_WIDTH - 4 && width <= BookLayout.PAGE_WIDTH);
         checks.check("dialog-preview-layout", padded && body().contains("Page 2 of 2") && !body().contains("will not show"),
                 "line widths " + widths + ", shown " + describe());
+        press("Back", Map.of());
 
-        // The default journal is switched off, never deleted, so its editor has no Delete
-        click("edit", form(Journal.DEFAULT_ID));
+        press("Give to me", Map.of());
+        checks.check("dialog-give-me", copies(carol, Journals.get("probe-dialog")) == 1
+                && body().contains("A copy of the saved journal is in your inventory."), "copies " + copies(carol, Journals.get("probe-dialog"))
+                + ", shown " + describe());
+        press("Back", Map.of());
+        checks.check("dialog-back-to-hub", shown instanceof MultiActionDialog && title().equals("Traveler's Journals"), "shown " + describe());
+
+        // Each hub button opens its own journal. The default journal is switched off, never
+        // deleted, so its editor has no Delete
+        press("Traveler's Journal", Map.of());
         boolean editorIcon = hasIcon() && body().contains("Id default, saved in travelers_journal.md");
+        boolean defaultOpened = title().equals("Traveler's Journal");
         boolean defaultHasDelete = shown instanceof MultiActionDialog editor && labels(editor).contains("Delete journal");
-        click("edit", form("probe-dialog"));
+        press("Back", Map.of());
+        press("Saved by dialog", Map.of());
+        boolean madeOpened = title().equals("Saved by dialog");
         boolean madeHasDelete = shown instanceof MultiActionDialog editor && labels(editor).contains("Delete journal");
-        checks.check("dialog-default-no-delete", !defaultHasDelete && madeHasDelete, "default " + defaultHasDelete + ", made " + madeHasDelete);
+        checks.check("dialog-default-no-delete", defaultOpened && madeOpened && !defaultHasDelete && madeHasDelete,
+                "default opened " + defaultOpened + " with Delete " + defaultHasDelete + ", made opened " + madeOpened + " with Delete " + madeHasDelete);
 
         as(server, "journals edit probe-welcome");
         checks.check("dialog-edit-command", title().equals("Welcome aboard") && inputs().contains("text"), "shown " + describe());
@@ -137,31 +172,36 @@ final class DialogProbe {
         Files.writeString(LONG.resolve("journal.txt"), "title=Long journal\nauthor=Probe\ngive_on_join=false\n", StandardCharsets.UTF_8);
         String longText = ("A line of a very long journal, repeated until it no longer fits the box.\n").repeat(220);
         Files.writeString(LONG.resolve("journal.md"), longText, StandardCharsets.UTF_8);
-        Journals.reload();
-        click("edit", form("probe-long"));
+        press("Back", Map.of());
+        press("Reload from files", Map.of());
+        press("Long journal", Map.of());
         boolean noBox = !inputs().contains("text") && body().contains("more than the editor holds");
-        click("save", form("probe-long", "Long journal, renamed", "Probe", false, null));
+        press("Save", Map.of("title", "Long journal, renamed"));
         checks.check("dialog-long-text-kept", noBox && Files.readString(LONG.resolve("journal.md")).equals(longText)
                 && Journals.get("probe-long").title().equals("Long journal, renamed"), "no box " + noBox + ", shown " + describe());
 
         // A player who is no longer an operator is refused, whatever the payload says
         command(server, console, "deop ProbeCarol");
-        click("save", form("probe-dialog", "Hijacked", "Probe", true, "Hijacked"));
+        send(new ServerboundCustomClickActionPacket(id("save"), Optional.of(form("probe-dialog", "Hijacked", "Probe", true, "Hijacked"))));
         checks.check("dialog-refuses-non-op", Files.readString(MADE.resolve("journal.md")).equals(text)
                 && Journals.get("probe-dialog").title().equals("Saved by dialog") && chat.contains("Only operators can manage journals."),
                 "chat " + oneLine(chat));
         command(server, console, "op ProbeCarol");
 
         // Delete asks first, then moves the folder to a backup and returns to the hub
-        click("delete_ask", form("probe-dialog"));
+        as(server, "journals edit probe-dialog");
+        press("Delete journal", Map.of());
         boolean deleteIcon = hasIcon();
         checks.check("dialog-icons", hubIcon && editorIcon && previewIcon && deleteIcon, "hub " + hubIcon + ", editor " + editorIcon
                 + ", preview " + previewIcon + ", delete " + deleteIcon);
         checks.check("dialog-hub-styled", hubStyled, "hub as first shown, styled " + hubStyled);
         boolean asked = shown instanceof ConfirmationDialog && title().equals("Delete Saved by dialog?");
-        click("delete", form("probe-dialog"));
+        press("Delete", Map.of());
         checks.check("dialog-delete", asked && Journals.get("probe-dialog") == null && !Files.exists(MADE)
                 && body().contains("Deleted Saved by dialog."), "asked " + asked + ", shown " + describe());
+
+        press("Done", Map.of());
+        checks.check("dialog-done-closes", cleared && shown == null, "cleared " + cleared + ", shown " + describe());
 
         // The text box's 15,000 characters fit the click payload's budget; more would not
         checks.check("dialog-payload-budget", fits(15_000) && !fits(16_500), "15,000 fits " + fits(15_000) + ", 16,500 fits " + fits(16_500));
@@ -169,38 +209,51 @@ final class DialogProbe {
         server.getPlayerList().remove(carol);
     }
 
-    // A form payload as the client builds it: the button's additions, then the inputs
-    private static Payload form(String journal, String title, String author, boolean give, String text) {
-        Payload payload = form(journal);
-        payload.tag.putString("title", title);
-        payload.tag.putString("author", author);
-        payload.tag.putBoolean("give", give);
-        if (text != null) payload.tag.putString("text", text);
-        return payload;
-    }
-
-    private static Payload form(String journal) {
-        Payload payload = new Payload(new CompoundTag());
-        if (!journal.isEmpty()) payload.tag.putString("journal", journal);
-        return payload;
-    }
-
-    private record Payload(CompoundTag tag) {
-        Payload putting(String key, String value) {
-            tag.putString(key, value);
-            return this;
+    // Presses a button of the dialog on screen as a client does: the button's own action and
+    // additions, then every input's value over them, typed here or as the dialog shows it
+    private void press(String label, Map<String, Object> typed) {
+        ActionButton button = buttons().stream().filter(candidate -> candidate.button().label().getString().equals(label)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("no button '" + label + "' on " + describe()));
+        Action action = button.action().orElseThrow(() -> new IllegalStateException("button '" + label + "' does nothing"));
+        if (!(action instanceof CustomAll custom)) throw new IllegalStateException("button '" + label + "' sends " + action);
+        CompoundTag payload = custom.additions().map(CompoundTag::copy).orElseGet(CompoundTag::new);
+        for (Input input : common().inputs()) {
+            Object value = typed.containsKey(input.key()) ? typed.get(input.key()) : initial(input.key());
+            if (value instanceof Boolean flag) payload.putBoolean(input.key(), flag);
+            else payload.putString(input.key(), (String) value);
         }
+        send(new ServerboundCustomClickActionPacket(custom.id(), Optional.of(payload)));
+    }
+
+    // Through the click packet's codec, as it crosses the network, then vanilla's listener
+    private void send(ServerboundCustomClickActionPacket packet) {
+        drain();
+        ByteBuf buffer = Unpooled.buffer();
+        ServerboundCustomClickActionPacket received;
+        try {
+            ServerboundCustomClickActionPacket.STREAM_CODEC.encode(buffer, packet);
+            received = ServerboundCustomClickActionPacket.STREAM_CODEC.decode(buffer);
+        } finally {
+            buffer.release();
+        }
+        carol.connection.handleCustomClickAction(received);
+        read();
+    }
+
+    // A payload written by hand, as a modified client could send it
+    private static CompoundTag form(String journal, String title, String author, boolean give, String text) {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("journal", journal);
+        tag.putString("title", title);
+        tag.putString("author", author);
+        tag.putBoolean("give", give);
+        tag.putString("text", text);
+        return tag;
     }
 
     private void as(MinecraftServer server, String commandLine) {
         drain();
         command(server, carol.createCommandSourceStack(), commandLine);
-        read();
-    }
-
-    private void click(String action, Payload payload) {
-        drain();
-        carol.connection.handleCustomClickAction(new ServerboundCustomClickActionPacket(id(action), Optional.of(payload.tag)));
         read();
     }
 
@@ -210,6 +263,7 @@ final class DialogProbe {
             // everything sent before this step is not about it
         }
         shown = null;
+        cleared = false;
         chat = "";
     }
 
@@ -218,8 +272,35 @@ final class DialogProbe {
         channel.flushOutbound();
         for (Object message = channel.readOutbound(); message != null; message = channel.readOutbound()) {
             if (message instanceof ClientboundShowDialogPacket packet) shown = packet.dialog().value();
+            if (message instanceof ClientboundClearDialogPacket) cleared = true;
             if (message instanceof ClientboundSystemChatPacket packet) chat += packet.content().getString() + "\n";
         }
+    }
+
+    private List<ActionButton> buttons() {
+        List<ActionButton> all = new ArrayList<>();
+        if (shown instanceof MultiActionDialog dialog) {
+            all.addAll(dialog.actions());
+            dialog.exitAction().ifPresent(all::add);
+        }
+        if (shown instanceof NoticeDialog dialog) all.add(dialog.action());
+        if (shown instanceof ConfirmationDialog dialog) {
+            all.add(dialog.yesButton());
+            all.add(dialog.noButton());
+        }
+        return all;
+    }
+
+    // An input's value as the dialog shows it before anything is typed
+    private Object initial(String key) {
+        if (common() == null) return null;
+        for (Input input : common().inputs()) {
+            if (!input.key().equals(key)) continue;
+            if (input.control() instanceof TextInput box) return box.initial();
+            if (input.control() instanceof BooleanInput toggle) return toggle.initial();
+            throw new IllegalStateException("input " + key + " is " + input.control());
+        }
+        return null;
     }
 
     private CommonDialogData common() {
@@ -275,7 +356,7 @@ final class DialogProbe {
 
     // Encodes and decodes a full-size form through the packet's own codec
     private static boolean fits(int characters) {
-        CompoundTag tag = form("a".repeat(32), "b".repeat(32), "c".repeat(32), true, "é".repeat(characters)).tag;
+        CompoundTag tag = form("a".repeat(32), "b".repeat(32), "c".repeat(32), true, "é".repeat(characters));
         ServerboundCustomClickActionPacket packet = new ServerboundCustomClickActionPacket(id("save"), Optional.of(tag));
         ByteBuf buffer = Unpooled.buffer();
         try {

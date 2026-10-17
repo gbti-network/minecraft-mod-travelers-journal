@@ -19,20 +19,28 @@
 #   test-matrix.sh libs <outdir> <dir>                 matrix of every jar in <dir> with its -probe.jar
 #   test-matrix.sh upgrade <old-jar> <new-jar> <probe> <version> [config-dir]   one upgrade cell
 #   test-matrix.sh upgrades <outdir> <new-jar> <probe> [version]   every past release, upgraded
+#   test-matrix.sh downgrade <old-jar> <new-jar> <probe> <version> <upgraded|fresh>   one downgrade cell
+#   test-matrix.sh downgrades <outdir> <new-jar> <probe> [version]   back to every past release
 #   test-matrix.sh world-upgrade <old-jar> <old-probe> <old-version> <new-jar> <new-probe> <new-version>
 #                                                      one world moved to a later Minecraft
-#   test-matrix.sh world-upgrades <outdir> <new-jar> <new-probe> <new-version> <old-jar> <old-probe> <old-version>...
+#   test-matrix.sh world-upgrades <outdir> <old-jar> <old-probe> <old-version> <new-jar> <new-probe> <new-version>...
 #
 # --widen tests a copy of the jar whose minecraft range is "*", to learn whether its code runs on
 # a version its range excludes. A matrix passes when no cell is FAIL, CRASH or ENV and every
-# version has a PASS.
+# version has exactly one PASS. A REFUSED cell counts only when Fabric names the jar's minecraft
+# range as the reason; any other refusal is a FAIL.
 #
 # An upgrade cell is two boots on one world, as a server admin upgrades: the old jar first (with
 # [config-dir] seeded as its config, else the defaults it writes), then the new jar in its place.
 # UpgradeProbe.java holds the checks. "upgrades" takes every Traveler's Journal release Modrinth
-# lists for [version] (default 1.21.1, where every release before 1.3.0 ran), plus any jars named
-# in EXTRA_PAST, and upgrades each twice: with its own default config and with
-# src/probe/fixtures/past-install.
+# lists for [version] (default 1.21.1, where every release before 2.0.0 ran), plus any jars named
+# in EXTRA_PAST whose version Modrinth does not list, and upgrades each twice: with its own default
+# config and with src/probe/fixtures/past-install. After the old jar's boot its config folder is
+# copied to config-before/, and the new jar must leave every one of those files byte for byte alone.
+#
+# A downgrade cell goes the other way on one world: the newer jar, then the past release in its
+# place. "upgraded" first boots the past release, as a server that upgraded and went back; "fresh"
+# starts from a new install of the newer jar. "downgrades" runs both for every past release.
 #
 # A world upgrade cell is two boots on two versions: the old version's jar on a new world, then
 # the same world and config opened on a later version with its jar, as a server moving to a newer
@@ -58,7 +66,7 @@ PARALLEL=${PARALLEL:-4}
 # ("expect=N"), because the probe is built per jar and the 1.21.6+ jars carry the dialog checks.
 ALL_VERSIONS=(1.20 1.20.1 1.20.2 1.20.3 1.20.4 1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10 1.21.11
 	26.1 26.1.1 26.1.2 26.2 26.3)
-ERRORS='InvalidMixinException|MixinApplyError|MixinTransformerError|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|BootstrapMethodError|IncompatibleClassChangeError|ClassCastException|Exception in thread|\[TJ\] (An error|Failed)|TJ-PROBE\] stack trace'
+ERRORS='InvalidMixinException|MixinApplyError|MixinTransformerError|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|BootstrapMethodError|IncompatibleClassChangeError|ClassCastException|Exception in thread|\[TJ\] (An error|Failed|A journal dialog button failed)|Failed to (save|load) player data|TJ-PROBE\] stack trace'
 
 trap '' PIPE # a server that dies mid-run must not take this script (and xargs) down with it
 die() { echo "test-matrix: $*" >&2; exit 2; }
@@ -203,8 +211,13 @@ run_one() { # jar probe version [--widen]
 	(( rc == 1 )) && ready=0
 
 	if grep -qE 'Incompatible mods? (found|set)' "$log"; then
-		verdict=REFUSED
 		evidence=$(grep -m1 -E "\($id\) .* requires .*\(minecraft\)" "$log" | sed 's/^[[:space:]]*- //' | oneline)
+		verdict=REFUSED
+		if [[ -z $evidence ]]; then
+			# Refused for something other than its range (a missing Fabric API, say): a fault
+			verdict=FAIL
+			evidence="refused for another reason: $({ grep -m1 -E ' requires ' "$log" || grep -m1 -iE 'incompatible' "$log"; } | sed 's/^[[:space:]]*- //' | oneline)"
+		fi
 	elif (( ! ready )); then
 		verdict=CRASH
 		evidence=$(grep -m1 -E "$ERRORS" "$log" | oneline)
@@ -261,8 +274,11 @@ upgrade_one() { # old-jar new-jar probe version [config-dir]
 		(( rc == 2 )) && { result CRASH "$phase: crashed after ready: $(grep -m1 -E "$ERRORS" "$log" | oneline)"; return; }
 		problems=$(probe_problems "$log" "$work")
 		[[ $problems ]] && { result FAIL "$phase: $problems"; return; }
-		# Replace the jar the way an admin would; the old one is moved aside, not deleted
+		# Replace the jar the way an admin would; the old one is moved aside, not deleted. What the
+		# old jar left is copied first, for UpgradeProbe to compare byte for byte
 		if [[ $phase == before ]]; then
+			mkdir -p "$work/config-before"
+			cp -r "$work/config/travelers-journal" "$work/config-before/"
 			mv "$work/mods/$(basename "$old")" "$work/replaced-mods/"
 			cp "$new" "$work/mods/"
 		fi
@@ -329,19 +345,17 @@ world_upgrade_one() { # old-jar old-probe old-version new-jar new-probe new-vers
 	result PASS "both boots clean: $(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+' "$before/run.log" | grep -oE '[0-9]+$') checks on $ov, $(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+' "$after/run.log" | grep -oE '[0-9]+$') on $nv"
 }
 
-world_upgrades() { # outdir new-jar new-probe new-version old-jar old-probe old-version...
-	local out=$1 new=$2 newprobe=$3 nv=$4 bad
-	shift 4
-	(( $# >= 3 && $# % 3 == 0 )) || die "world-upgrades needs <old-jar> <old-probe> <old-version> triples"
+world_upgrades() { # outdir old-jar old-probe old-version new-jar new-probe new-version [...]
+	local out=$1 bad i
+	local -a versions=()
+	shift
+	(( $# >= 6 && $# % 6 == 0 )) || die "world-upgrades needs groups of <old-jar> <old-probe> <old-version> <new-jar> <new-probe> <new-version>"
 	mkdir -p "$out"
 	export TB_OUT=$out
-	: > "$out/world-upgrades.raw.tsv"
-	while (( $# )); do
-		fetch_one "$3" >> "$out/fetch.txt"
-		world_upgrade_one "$1" "$2" "$3" "$new" "$newprobe" "$nv" >> "$out/world-upgrades.raw.tsv"
-		shift 3
-	done
-	fetch_one "$nv" >> "$out/fetch.txt"
+	for (( i = 3; i <= $#; i += 3 )); do versions+=("${!i}"); done
+	printf '%s\n' "${versions[@]}" | sort -uV | xargs -P "$PARALLEL" -I{} "$0" fetch {} > "$out/fetch.txt"
+	printf '%s\0' "$@" | xargs -0 -P "$PARALLEL" -n 6 sh -c 'exec "$0" world-upgrade "$1" "$2" "$3" "$4" "$5" "$6"' "$0" \
+		> "$out/world-upgrades.raw.tsv"
 	sort -t$'\t' -k1,1V "$out/world-upgrades.raw.tsv" > "$out/world-upgrades.tsv"
 	cut -f1-3 "$out/world-upgrades.tsv"
 	bad=$(awk -F'\t' '$3 != "PASS"' "$out/world-upgrades.tsv")
@@ -352,17 +366,33 @@ world_upgrades() { # outdir new-jar new-probe new-version old-jar old-probe old-
 	echo "world upgrades: passed, $(wc -l < "$out/world-upgrades.tsv") cells"
 }
 
+# Every past release for <version>: the ones Modrinth lists, then each jar in EXTRA_PAST whose
+# version is not among them. A list that cannot be fetched whole stops the run, so a release can
+# never drop out of the test unnoticed.
+past_releases() { # version new-version
+	local v=$1 nver=$2 list jar ver
+	local -A seen=()
+	list=$(helper past "$v" "$CACHE/past/$v" "$nver") || die "could not fetch every past release for $v from Modrinth"
+	# shellcheck disable=SC2086 # EXTRA_PAST is a space-separated list of jar paths
+	for jar in $list ${EXTRA_PAST:-}; do
+		IFS=$'\t' read -r _ ver _ < <(helper modinfo "$jar")
+		[[ -n ${seen[$ver]:-} || $ver == "$nver" ]] && continue
+		seen[$ver]=1
+		echo "$jar"
+	done
+}
+
 upgrades() { # outdir new-jar probe [version]
-	local out=$1 new=$2 probe=$3 v=${4:-1.21.1} nver jar bad
+	local out=$1 new=$2 probe=$3 v=${4:-1.21.1} nver jar bad list
 	local -a past
 	mkdir -p "$out"
 	export TB_OUT=$out
 	fetch_one "$v" > "$out/fetch.txt"
 	IFS=$'\t' read -r _ nver _ < <(helper modinfo "$new")
-	mapfile -t past < <(helper past "$v" "$CACHE/past/$v" "$nver")
-	# shellcheck disable=SC2206 # EXTRA_PAST is a space-separated list of jar paths
-	past+=(${EXTRA_PAST:-})
-	(( ${#past[@]} )) || die "no past release found for $v"
+	list=$(past_releases "$v" "$nver") || exit 2
+	mapfile -t past <<< "$list"
+	[[ ${past[0]:-} ]] || die "no past release found for $v"
+	printf '%s\n' "${past[@]}" > "$out/past-releases.txt"
 	export U_NEW=$new U_PROBE=$probe U_V=$v U_FIXTURE="$HERE/../src/probe/fixtures/past-install"
 	for jar in "${past[@]}"; do printf '%s\0%s\0' "$jar" default "$jar" customised; done |
 		xargs -0 -P "$PARALLEL" -n 2 sh -c '
@@ -376,6 +406,71 @@ upgrades() { # outdir new-jar probe [version]
 		return 1
 	fi
 	echo "upgrades: passed, $(wc -l < "$out/upgrades.tsv") cells"
+}
+
+downgrade_one() { # old-jar new-jar probe version upgraded|fresh
+	local old=$1 new=$2 probe=$3 v=$4 variant=$5 start=$SECONDS
+	local over nver label tag work step mode jar prev="" n=0 problem log
+	local -a steps=() checked=()
+	IFS=$'\t' read -r _ over _ < <(helper modinfo "$old")
+	IFS=$'\t' read -r _ nver _ < <(helper modinfo "$new")
+	label="$nver back to $over, $variant install"
+	tag="downgrade-$nver-to-$over-$variant"
+	result() { printf '%s\t%s\t%s\t%s\t%s\n' "$label" "$v" "$1" "$((SECONDS - start))" "$2"; }
+	[[ -f $CACHE/mc/$v/control.ok ]] || { result ENV "control boot failed or not fetched: $CACHE/mc/$v/control.log"; return; }
+	[[ $variant == upgraded ]] && steps+=("upgrade-before:$old")
+	steps+=("downgrade-new:$new" "downgrade-old:$old")
+	work=$(workdir "$v" journal-downgrade)
+	mkdir -p "$work/config/travelers-journal" "$work/replaced-mods"
+	cp "$probe" "$work/mods/"
+	for step in "${steps[@]}"; do
+		mode=${step%%:*}
+		jar=${step#*:}
+		n=$((n + 1))
+		# The jar of the boot before is moved aside, not deleted, as an admin swaps jars
+		if [[ $prev ]]; then
+			mkdir -p "$work/replaced-mods/$n"
+			mv "$work/mods/$(basename "$prev")" "$work/replaced-mods/$n/"
+		fi
+		cp "$jar" "$work/mods/"
+		prev=$jar
+		echo "$mode" > "$work/config/travelers-journal-probe.txt"
+		log="$work/$n-$mode.log"
+		problem=$(probe_boot "$work" "$log" "$mode")
+		if [[ ${TB_OUT:-} ]]; then
+			mkdir -p "$TB_OUT/logs"
+			cp "$log" "$TB_OUT/logs/$tag-$n-$mode.log"
+		fi
+		if [[ $problem ]]; then
+			result "${problem%%	*}" "${problem#*	}"
+			return
+		fi
+		checked+=("$(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+' "$log" | grep -oE '[0-9]+$') in $mode")
+	done
+	result PASS "every boot clean: $(printf '%s, ' "${checked[@]}" | sed 's/, $//')"
+}
+
+downgrades() { # outdir new-jar probe [version]
+	local out=$1 new=$2 probe=$3 v=${4:-1.21.1} nver jar bad list
+	local -a past
+	mkdir -p "$out"
+	export TB_OUT=$out
+	fetch_one "$v" > "$out/fetch.txt"
+	IFS=$'\t' read -r _ nver _ < <(helper modinfo "$new")
+	list=$(past_releases "$v" "$nver") || exit 2
+	mapfile -t past <<< "$list"
+	[[ ${past[0]:-} ]] || die "no past release found for $v"
+	export U_NEW=$new U_PROBE=$probe U_V=$v
+	for jar in "${past[@]}"; do printf '%s\0%s\0' "$jar" upgraded "$jar" fresh; done |
+		xargs -0 -P "$PARALLEL" -n 2 sh -c 'exec "$0" downgrade "$1" "$U_NEW" "$U_PROBE" "$U_V" "$2"' "$0" > "$out/downgrades.raw.tsv"
+	sort -t$'\t' -k1,1V "$out/downgrades.raw.tsv" > "$out/downgrades.tsv"
+	cut -f1-3 "$out/downgrades.tsv"
+	bad=$(awk -F'\t' '$3 != "PASS"' "$out/downgrades.tsv")
+	if [[ $bad ]]; then
+		printf 'problems:\n%s\ndowngrades: FAILED\n' "$bad"
+		return 1
+	fi
+	echo "downgrades: passed, $(wc -l < "$out/downgrades.tsv") cells"
 }
 
 matrix() { # outdir jar probe [jar probe...]
@@ -421,15 +516,19 @@ libs() { # outdir libsdir: every mod jar in libsdir, each with its -probe.jar
 }
 
 summary() { # results.tsv
-	local v pass bad missing=0
+	local v pass bad missing=0 overlap=0
 	bad=$(awk -F'\t' '$3 != "PASS" && $3 != "REFUSED"' "$1")
 	for v in "${ALL_VERSIONS[@]}"; do
 		pass=$(awk -F'\t' -v v="$v" '$2 == v && $3 == "PASS" {printf "%s ", $1}' "$1")
 		[[ $pass ]] || missing=1
+		# Two jars passing on one version means their ranges overlap, and which one the bundled
+		# jar would load there is not defined
+		(( $(wc -w <<< "$pass") > 1 )) && overlap=1
 		printf '%-8s %s\n' "$v" "${pass:-NO PASSING JAR}"
 	done
 	[[ $bad ]] && printf 'problems:\n%s\n' "$bad"
-	if [[ $bad ]] || (( missing )); then
+	(( overlap )) && echo "problems: more than one jar passes on a version, so their ranges overlap"
+	if [[ $bad ]] || (( missing || overlap )); then
 		echo "matrix: FAILED"
 		return 1
 	fi
@@ -444,7 +543,9 @@ case ${1:-} in
 	libs) shift; libs "$@" ;;
 	upgrade) shift; upgrade_one "$@" ;;
 	upgrades) shift; upgrades "$@" ;;
+	downgrade) shift; downgrade_one "$@" ;;
+	downgrades) shift; downgrades "$@" ;;
 	world-upgrade) shift; world_upgrade_one "$@" ;;
 	world-upgrades) shift; world_upgrades "$@" ;;
-	*) sed -n '2,43p' "$0" ;;
+	*) sed -n '2,52p' "$0" ;;
 esac
