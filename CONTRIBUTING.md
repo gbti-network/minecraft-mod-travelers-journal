@@ -76,7 +76,10 @@ mock players the way a login does, loading a returning player's save, and checks
   journal finds it again after the save.
 - `JournalsProbe`: several journals, created by command and from files. It checks the give rules,
   the id each book carries, delete and its backup, `default` being kept, `operator_level` through
-  `/journals reload`, and a title too long for a book being cut to 32 characters.
+  `/journals reload`, and a title too long for a book being cut to 32 characters. It also checks
+  what an operator reads: the help and, below 1.21.6, its link to the README's guide; the short
+  reply after `create`; and `create`, `give` and `delete` typed alone showing their usage instead
+  of failing as incomplete.
 - `DialogProbe`, on 1.21.6 and later: the manager. Each press takes a button from the dialog the
   server actually sent, its action and additions, lays the inputs' values over them as a client
   does, and goes through the click packet's codec. All twelve actions are pressed, refusals and

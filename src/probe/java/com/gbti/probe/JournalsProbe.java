@@ -2,6 +2,7 @@ package com.gbti.probe;
 
 import com.gbti.Journal;
 import com.gbti.JournalBook;
+import com.gbti.JournalCommands;
 import com.gbti.Journals;
 import com.gbti.utils.BookFont;
 import com.mojang.brigadier.tree.CommandNode;
@@ -32,7 +33,7 @@ import static com.gbti.probe.ProbeSupport.use;
  * marked, tagged with their id, listed, deleted with a backup, and the default journal kept safe.
  */
 final class JournalsProbe {
-    static final int CHECKS = 20;
+    static final int CHECKS = 22;
     private static final Path ROOT = Path.of("config/travelers-journal");
     private static final Path CONFIG = ROOT.resolve("config.txt");
     private static final Path JOIN_LIST = ROOT.resolve("joinlist.txt");
@@ -48,12 +49,24 @@ final class JournalsProbe {
     }
 
     void prepare(MinecraftServer server) throws Exception {
-        // By command: a new journal starts with a title from its id and is given by command only
-        said(server, "journals create probe-guide");
+        // By command: a new journal starts with a title from its id, as a bold first line, and is
+        // given by command only
+        String made = said(server, "journals create probe-guide");
+        String madeStyled = ProbeSupport.lastStyled;
         Journal guide = Journals.get("probe-guide");
+        String starter = Files.exists(GUIDE.resolve("journal.md")) ? Files.readString(GUIDE.resolve("journal.md")) : "";
         checks.check("create", guide != null && guide.title().equals("Probe guide") && !guide.giveOnJoin()
-                && Files.exists(GUIDE.resolve("journal.txt")) && Files.exists(GUIDE.resolve("journal.md")),
-                "journal " + (guide == null ? "missing" : guide.title() + ", give on join " + guide.giveOnJoin()));
+                && Files.exists(GUIDE.resolve("journal.txt")) && starter.startsWith("**Probe guide**\n"),
+                "journal " + (guide == null ? "missing" : guide.title() + ", give on join " + guide.giveOnJoin())
+                        + ", starts " + oneLine(starter.lines().findFirst().orElse("")));
+        // The reply is short and sends the operator on: to the editor where there is one, otherwise
+        // to the folder and the README's guide, linked
+        //? if >=1.21.6 {
+        boolean next = made.contains("Open it with /journals edit probe-guide");
+        //?} else {
+        /*boolean next = made.contains("config/travelers-journal/journals/probe-guide/") && madeStyled.contains(JournalCommands.GUIDE);
+        *///?}
+        checks.check("create-says-next-steps", next && made.strip().lines().count() <= 2, "said " + oneLine(made));
         String bad = said(server, "journals create Bad_Id");
         String twice = said(server, "journals create probe-guide");
         String reserved = said(server, "journals create default");
@@ -101,10 +114,26 @@ final class JournalsProbe {
                 && list.contains("probe-guide Probe guide, by command") && list.contains("probe-welcome Welcome aboard, first join"),
                 "said " + oneLine(list));
         String edit = said(server, "journals edit probe-welcome");
-        checks.check("edit-names-file", edit.contains("config/travelers-journal/journals/probe-welcome/journal.md"), "said " + oneLine(edit));
+        checks.check("edit-names-file", edit.contains("config/travelers-journal/journals/probe-welcome/journal.md")
+                && edit.contains("and journal.txt"), "said " + oneLine(edit));
         String usage = said(server, "journals");
+        //? if >=1.21.6 {
+        boolean fileSteps = true;
+        //?} else {
+        /*boolean fileSteps = usage.contains("journals are edited as files") && ProbeSupport.lastStyled.contains(JournalCommands.GUIDE);
+        *///?}
         checks.check("usage-lists-commands", usage.contains("/journals list") && usage.contains("/journals create <id>")
-                && usage.contains("/journals delete <journal>") && usage.contains("/journals edit [journal]"), "said " + oneLine(usage));
+                && usage.contains("the id is a short name") && usage.contains("/journals delete <journal>")
+                && usage.contains("/journals edit [journal]") && fileSteps, "said " + oneLine(usage));
+        // A subcommand typed alone shows its usage and an example in one line, instead of failing as
+        // incomplete
+        String bareCreate = said(server, "journals create");
+        String bareGive = said(server, "journals give");
+        String bareDelete = said(server, "journals delete");
+        String bare = bareCreate + bareGive + bareDelete;
+        checks.check("bare-subcommands-explain", bareCreate.contains("/journals create rules") && bareGive.contains("/journals give @s")
+                && bareDelete.contains("/journals delete rules") && !bare.contains("Unknown or incomplete") && Journals.get("rules") == null
+                && bare.strip().lines().count() == 3, "said " + oneLine(bare));
 
         // Delete moves the folder to a dated backup; copies already handed out stay as they are
         ItemStack guideCopy = firstCopy(bob, guide).copy();

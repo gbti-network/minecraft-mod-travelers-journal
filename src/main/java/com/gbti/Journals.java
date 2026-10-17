@@ -37,7 +37,7 @@ public final class Journals {
     private static final String DEFAULT_CONFIG = "title=Traveler's Journal\nauthor=Server\ngive_on_join=true\n"
             + "operator_level=" + DEFAULT_OPERATOR_LEVEL + "\ndebug_logging=false\n"
             + "legacy_titles=Traveller's Journal,Travelers Journal\n";
-    private static final String DEFAULT_CONTENT = "# Welcome to the Server!\n\n"
+    private static final String DEFAULT_CONTENT = "**Welcome to the Server!**\n\n"
             + "This is your Traveler's Journal. Use it to record your adventures and discoveries.";
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss", Locale.ROOT);
 
@@ -158,7 +158,7 @@ public final class Journals {
     }
 
     public static String starterText(String title) {
-        return "# " + title + "\n\nWrite this journal's text here.";
+        return "**" + title + "**\n\nWrite this journal's text here.";
     }
 
     /** Creates journals/<id>/. The id must be valid and not taken: check with validId and get first. */

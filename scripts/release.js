@@ -40,8 +40,8 @@ const UPGRADE_FROM_MINECRAFT = '1.21.1';
 const WORLD_MOVES = [['1.20.1', '1.21.1'], ['1.20.4', '1.21.1'], ['1.21.1', '1.21.5'], ['1.21.5', '26.1'], ['1.20.1', '26.3']];
 // The probe's checks per passing cell, stated here as well as by the probe itself, so a phase that
 // quietly stops running fails the release instead of shrinking the count both sides agree on
-const CHECKS_BEFORE_MANAGER = 51;
-const CHECKS_WITH_MANAGER = 71;
+const CHECKS_BEFORE_MANAGER = 53;
+const CHECKS_WITH_MANAGER = 73;
 // Versions inside the supported span that no jar covers; the shipped jar must be refused there
 const UNCOVERED = ['1.20.5', '1.20.6'];
 

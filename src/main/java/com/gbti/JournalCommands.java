@@ -10,6 +10,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
@@ -23,6 +24,9 @@ import net.minecraft.server.permissions.PermissionCheck;
 import net.minecraft.server.permissions.PermissionLevel;
 //?}
 
+//? if >=1.21.5 {
+import java.net.URI;
+//?}
 import java.nio.file.Path;
 import java.util.Collection;
 
@@ -48,6 +52,7 @@ public final class JournalCommands {
                 .then(Commands.literal("list").executes(JournalCommands::list))
                 .then(Commands.literal("reload").executes(JournalCommands::reload))
                 .then(Commands.literal("give")
+                    .executes(context -> hint(context, "/journals give <players> [journal]", "/journals give @s"))
                     .then(Commands.argument("targets", EntityArgument.players())
                         .executes(context -> give(context, null))
                         .then(Commands.argument("journal", StringArgumentType.word()).suggests(JOURNALS)
@@ -55,10 +60,12 @@ public final class JournalCommands {
                     )
                 )
                 .then(Commands.literal("create")
+                    .executes(context -> hint(context, "/journals create <id>", "/journals create rules"))
                     .then(Commands.argument("id", StringArgumentType.word())
                         .executes(context -> create(context, StringArgumentType.getString(context, "id"))))
                 )
                 .then(Commands.literal("delete")
+                    .executes(context -> hint(context, "/journals delete <journal>", "/journals delete rules"))
                     .then(Commands.argument("journal", StringArgumentType.word()).suggests(DELETABLE)
                         .executes(context -> delete(context, StringArgumentType.getString(context, "journal"))))
                 )
@@ -106,19 +113,47 @@ public final class JournalCommands {
         //? if >=1.21.6 {
         String edit = "opens a journal in the editor";
         //?} else {
-        /*String edit = "names a journal's file to edit";
+        /*String edit = "names a journal's files to edit";
         *///?}
         MutableComponent usage = Component.literal("Traveler's Journal: /journals or /travelers_journal").withStyle(ChatFormatting.GOLD);
         //? if >=1.21.6 {
         usage.append(line("/journals", "opens the journal manager, in game"));
         //?}
-        return usage
-            .append(line("/journals list", "shows every journal"))
+        usage.append(line("/journals list", "shows every journal and its id"))
             .append(line("/journals give <players> [journal]", "gives players a journal"))
-            .append(line("/journals create <id>", "adds a journal"))
+            .append(line("/journals create <id>", "adds a journal; the id is a short name like rules"))
             .append(line("/journals delete <journal>", "removes a journal, keeping a backup"))
             .append(line("/journals edit [journal]", edit))
             .append(line("/journals reload", "reads the journal files again"));
+        // Without the manager the journals are files, and the README walks through them
+        //? if <1.21.6 {
+        /*usage.append(Component.literal("\nOn this version, journals are edited as files: ").withStyle(ChatFormatting.WHITE))
+            .append(guide("read the README guide"));
+        *///?}
+        return usage;
+    }
+
+    // The README's guide to managing journals by file, linked from the replies on the versions
+    // without the manager, so chat stays short
+    public static final String GUIDE = "https://github.com/gbti-network/minecraft-mod-travelers-journal#-managing-journals-by-file-120-to-1215";
+
+    private static Component guide(String text) {
+        //? if >=1.21.5 {
+        ClickEvent open = new ClickEvent.OpenUrl(URI.create(GUIDE));
+        //?} else {
+        /*ClickEvent open = new ClickEvent(ClickEvent.Action.OPEN_URL, GUIDE);
+        *///?}
+        return Component.literal(text).withStyle(style -> style.withClickEvent(open).withColor(ChatFormatting.AQUA).withUnderlined(true));
+    }
+
+    // A subcommand typed without what it needs shows its usage and an example, instead of failing
+    // as an incomplete command. It changes nothing, so it counts as no result.
+    private static int hint(CommandContext<CommandSourceStack> context, String usage, String example) {
+        context.getSource().sendSuccess(() -> Component.literal("Usage: ").withStyle(ChatFormatting.GRAY)
+            .append(Component.literal(usage).withStyle(ChatFormatting.YELLOW))
+            .append(Component.literal(", for example ").withStyle(ChatFormatting.GRAY))
+            .append(Component.literal(example).withStyle(ChatFormatting.YELLOW)), false);
+        return 0;
     }
 
     private static Component line(String command, String effect) {
@@ -183,8 +218,13 @@ public final class JournalCommands {
         try {
             String title = Journals.titleFor(id);
             Journal journal = Journals.create(id, title, Journals.defaultJournal().author(), false, Journals.starterText(title));
-            context.getSource().sendSuccess(() -> Component.literal("Created journal " + id + ". Its text is in "
-                    + journal.textPath() + "."), true);
+            //? if >=1.21.6 {
+            Component reply = Component.literal("Created journal " + id + ". Open it with /journals edit " + id + ".");
+            //?} else {
+            /*Component reply = Component.literal("Created journal " + id + " in " + journal.folder().toString().replace('\\', '/') + "/.\nHow to edit it: ")
+                .append(guide("the README guide"));
+            *///?}
+            context.getSource().sendSuccess(() -> reply, true);
             return 1;
         } catch (Exception e) {
             TravelersJournal.logError("[TJ] Failed to create journal {}: {}", id, e.toString());
@@ -222,10 +262,8 @@ public final class JournalCommands {
             JournalScreens.editor(player, journal);
             return 1;
         }
-        String message = "Edit " + journal.textPath() + ", then run /journals reload.";
-        //?} else {
-        /*String message = "Dialogs need Minecraft 1.21.6 or newer. Edit " + journal.textPath() + ", then run /journals reload.";
-        *///?}
+        //?}
+        String message = "Edit " + journal.textPath() + " and " + journal.settingsFile().getFileName() + ", then run /journals reload.";
         context.getSource().sendSuccess(() -> Component.literal(message), false);
         return 1;
     }

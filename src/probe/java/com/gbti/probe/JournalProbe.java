@@ -77,7 +77,7 @@ public class JournalProbe implements ModInitializer {
             "Line 8", "Line 9", "Line 10", "Line 11", "Line 12", "Line 13", "Line 14");
     private static final String PAGE_ONE = "Bold Italic Under Red \"Quoted\" it's\n・ Bullet\n*Stars* and \\ slash\n";
     private static final String UPDATED = "Updated after reload";
-    private static final List<String> DEFAULT_TEXT = List.of("# Welcome to the Server!", "",
+    private static final List<String> DEFAULT_TEXT = List.of("**Welcome to the Server!**", "",
             "This is your Traveler's Journal. Use it to record your adventures and discoveries.");
 
     private final ProbeSupport.Checks checks = new ProbeSupport.Checks();

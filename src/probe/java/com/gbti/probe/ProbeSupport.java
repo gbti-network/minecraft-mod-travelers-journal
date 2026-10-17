@@ -145,12 +145,17 @@ final class ProbeSupport {
         return said(server, server.createCommandSourceStack(), command);
     }
 
+    // The last reply said() heard, with its styles, so a check can read where a link goes
+    static String lastStyled = "";
+
     static String said(MinecraftServer server, CommandSourceStack source, String command) {
         StringBuilder said = new StringBuilder();
+        StringBuilder styled = new StringBuilder();
         command(server, source.withSource(new CommandSource() {
             @Override
             public void sendSystemMessage(Component message) {
                 said.append(message.getString()).append('\n');
+                styled.append(message).append('\n');
             }
 
             @Override
@@ -168,6 +173,7 @@ final class ProbeSupport {
                 return false;
             }
         }), command);
+        lastStyled = styled.toString();
         return said.toString();
     }
 
