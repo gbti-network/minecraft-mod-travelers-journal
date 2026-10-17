@@ -63,7 +63,7 @@ For operators and the server console. `/journals` is a shorter name for `/travel
 
 On Minecraft 1.21.6 and later, an operator who types `/journals` gets the manager, built from Minecraft's own dialog screens, so players need no client mod.
 
-- **The hub** lists every journal, marked `first join` or `by command`, with Create journal and Reload from files.
+- **The hub** lists every journal by title, with `first join` beside the ones that go to every new player, plus Create journal and Reload from files.
 - **The editor** holds the book title (up to 32 characters), the author, a "Give on first join" switch and the text in one box, in the same markup as the files. Save writes the files, keeping the previous text as a `.bak` file beside it. Preview shows the pages as they will read, without saving.
 - **Give to me** puts a copy in your inventory, and **Delete journal** asks first, then moves the journal's folder to a backup.
 - Each screen shows the journal's book as an icon; hover over it to see the title and author as players will.

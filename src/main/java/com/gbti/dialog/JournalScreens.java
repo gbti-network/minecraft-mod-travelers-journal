@@ -2,11 +2,11 @@ package com.gbti.dialog;
 
 import com.gbti.Journal;
 import com.gbti.JournalBook;
-import com.gbti.JournalCommands;
 import com.gbti.Journals;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.dialog.ActionButton;
 import net.minecraft.server.dialog.ConfirmationDialog;
 import net.minecraft.server.dialog.Input;
@@ -53,13 +53,13 @@ public final class JournalScreens {
         List<DialogBody> body = new ArrayList<>();
         if (status != null) body.add(Widgets.line(status.line()));
         String count = journals.size() == 1 ? "1 journal." : journals.size() + " journals.";
-        body.add(Widgets.icon(JournalBook.create(Journals.defaultJournal()),
-                Component.literal(count + " The ones marked first join go to every new player once.")));
+        body.add(Widgets.icon(JournalBook.create(Journals.defaultJournal()), Component.literal(count)));
 
+        // Each journal's title in yellow, marked in green when it goes to new players (owner, 2026-10-16)
         List<ActionButton> buttons = new ArrayList<>();
         for (Journal journal : journals) {
-            Component label = Component.literal(journal.title())
-                    .append(Component.literal("  " + JournalCommands.giveRule(journal)).withStyle(ChatFormatting.GRAY));
+            MutableComponent label = Component.literal(journal.title()).withStyle(ChatFormatting.YELLOW);
+            if (journal.giveOnJoin()) label.append(Component.literal("  first join").withStyle(ChatFormatting.GREEN));
             buttons.add(Widgets.button(label, BUTTON, "edit", Form.of(journal).journalTag()));
         }
         buttons.add(Widgets.button("Create journal", BUTTON, "create_form", new CompoundTag()));

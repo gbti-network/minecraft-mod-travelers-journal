@@ -48,7 +48,7 @@ import static com.gbti.probe.ProbeSupport.oneLine;
  * sends back is read from the mock player's channel.
  */
 final class DialogProbe {
-    static final int CHECKS = 13;
+    static final int CHECKS = 14;
     private static final Path FOLDERS = Path.of("config/travelers-journal/journals");
     private static final Path MADE = FOLDERS.resolve("probe-dialog");
     private static final Path LONG = FOLDERS.resolve("probe-long");
@@ -73,6 +73,12 @@ final class DialogProbe {
         checks.check("dialog-hub-opens", shown instanceof MultiActionDialog hub && title().equals("Traveler's Journals")
                 && labels(hub).contains("Create journal") && labels(hub).stream().anyMatch(label -> label.startsWith("Traveler's Journal")),
                 "shown " + describe());
+        // Titles in yellow, "first join" in green beside the ones new players get, and nothing else
+        // (owner, 2026-10-16): the journal JournalsProbe made by command shows its title alone
+        boolean hubStyled = shown instanceof MultiActionDialog styled && body().trim().equals(Journals.all().size() + " journals.")
+                && labels(styled).contains("Pages") && labels(styled).contains("Traveler's Journal  first join")
+                && styled.actions().stream().map(button -> button.button().label()).filter(label -> label.getString().startsWith("Traveler's Journal"))
+                        .allMatch(label -> colour(label, "Traveler's Journal", ChatFormatting.YELLOW) && colour(label, "  first join", ChatFormatting.GREEN));
 
         // Create, then Save, through the buttons
         click("create", form("", "Dialog journal", "Probe", false, "Made in a dialog").putting("id", "probe-dialog"));
@@ -147,6 +153,7 @@ final class DialogProbe {
         boolean deleteIcon = hasIcon();
         checks.check("dialog-icons", hubIcon && editorIcon && previewIcon && deleteIcon, "hub " + hubIcon + ", editor " + editorIcon
                 + ", preview " + previewIcon + ", delete " + deleteIcon);
+        checks.check("dialog-hub-styled", hubStyled, "hub as first shown, styled " + hubStyled);
         boolean asked = shown instanceof ConfirmationDialog && title().equals("Delete Saved by dialog?");
         click("delete", form("probe-dialog"));
         checks.check("dialog-delete", asked && Journals.get("probe-dialog") == null && !Files.exists(MADE)
@@ -245,6 +252,12 @@ final class DialogProbe {
         if (common() == null) return false;
         return common().inputs().stream().anyMatch(input -> input.key().equals(key) && input.control() instanceof TextInput box
                 && Objects.equals(box.label().getStyle().getColor(), TextColor.fromLegacyFormat(ChatFormatting.RED)));
+    }
+
+    // Whether the run of a label with this exact text has this colour
+    private static boolean colour(net.minecraft.network.chat.Component label, String run, ChatFormatting expected) {
+        return label.visit((style, text) -> text.equals(run) ? Optional.of(Objects.equals(style.getColor(), TextColor.fromLegacyFormat(expected)))
+                : Optional.<Boolean>empty(), net.minecraft.network.chat.Style.EMPTY).orElse(false);
     }
 
     private static List<String> labels(MultiActionDialog dialog) {
