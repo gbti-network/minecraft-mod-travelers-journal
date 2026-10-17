@@ -44,6 +44,12 @@ Before 1.20.5 a written book is NBT rather than item components. `JournalBook` h
 difference (`book`, `contents`, `taggedId`), so the rest of the mod and the probe read books the
 same way on every version.
 
+Releases ship one jar. `scripts/bundle.py` packs every per-range jar inside it (Fabric's
+jar-in-jar) and renames each one's mod id to `travelers-journal-mc`. The outer jar is the mod
+`travelers-journal`, holds no code, and requires one of the supported ranges, so Fabric loads the
+per-range jar that fits the server and refuses the whole jar anywhere else. The per-range jars
+never ship on their own.
+
 You need JDK 25. It also builds the 1.20.x jars, which target Java 17, and the 1.21.x jars, which
 target Java 21.
 
@@ -72,8 +78,11 @@ checks, in phases:
   sends, including refusals and the payload size limit.
 
 The probe announces how many checks it will run on its `START` line, and a jar passes only when
-all of them do. Each jar must pass inside its declared range, and Fabric must refuse it everywhere
-else. It runs on Linux or WSL:
+all of them do. Each per-range jar must pass inside its declared range, and Fabric must refuse it
+everywhere else, which proves that no two ranges claim a version. The release then tests the
+bundled jar itself on every version, beside the probe built for that version's range, and checks
+that Fabric refuses it on 1.20.5 and 1.20.6. The upgrade and world upgrade tests below run
+against the bundled jar too. It runs on Linux or WSL:
 
 ```bash
 npm test
@@ -127,9 +136,9 @@ npm run test:worlds
 
 1. Set `mod_version` in `gradle.properties`, add a `## [<version>]` section to
    `.product/changelog.md`, and commit both.
-2. `npm run release:stage` builds every jar, runs the test matrix, the upgrade test and the world
-   upgrade test, and stages
-   the jars, release notes and checksums in `build/release/<version>/`.
+2. `npm run release:stage` builds every per-range jar, runs the test matrix, bundles the jars,
+   tests the bundled jar on every version and through the upgrade and world upgrade tests, and
+   stages it with the release notes and checksums in `build/release/<version>/`.
 3. `npm run release:publish -- --dry-run` shows what publishing will do. Without `--dry-run` it tags
    the commit, pushes, creates the GitHub release and uploads to Modrinth and CurseForge when
    `MODRINTH_TOKEN` and `CURSEFORGE_TOKEN` are set. Planet Minecraft is updated by hand.

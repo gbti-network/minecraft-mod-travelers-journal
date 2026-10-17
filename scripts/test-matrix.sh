@@ -15,6 +15,7 @@
 #   test-matrix.sh fetch [versions...]                 server launcher + Fabric API + control boot
 #   test-matrix.sh run <jar> <probe> <version> [--widen]   one cell, one TSV line on stdout
 #   test-matrix.sh matrix <outdir> <jar> <probe> [<jar> <probe>...]   every pair on every version
+#   test-matrix.sh cells <outdir> <jar> <probe> <version> [...]   the given cells only, judged by the caller
 #   test-matrix.sh libs <outdir> <dir>                 matrix of every jar in <dir> with its -probe.jar
 #   test-matrix.sh upgrade <old-jar> <new-jar> <probe> <version> [config-dir]   one upgrade cell
 #   test-matrix.sh upgrades <outdir> <new-jar> <probe> [version]   every past release, upgraded
@@ -392,6 +393,22 @@ matrix() { # outdir jar probe [jar probe...]
 	summary "$out/results.tsv" | tee "$out/summary.txt"
 }
 
+# The given cells only, in parallel, sorted by version into <outdir>/cells.tsv. release.js uses it
+# for the bundled jar, which needs a different probe on each version and no PASS-per-version rule.
+cells() { # outdir jar probe version [jar probe version...]
+	local out=$1 i
+	local -a versions=()
+	shift
+	(( $# >= 3 && $# % 3 == 0 )) || die "cells needs <jar> <probe> <version> triples"
+	mkdir -p "$out"
+	export TB_OUT=$out
+	for (( i = 3; i <= $#; i += 3 )); do versions+=("${!i}"); done
+	printf '%s\n' "${versions[@]}" | sort -uV | xargs -P "$PARALLEL" -I{} "$0" fetch {} > "$out/fetch.txt"
+	printf '%s\0' "$@" | xargs -0 -P "$PARALLEL" -n 3 sh -c 'exec "$0" run "$1" "$2" "$3"' "$0" > "$out/cells.raw.tsv"
+	sort -t$'\t' -k2,2V "$out/cells.raw.tsv" > "$out/cells.tsv"
+	cut -f1-3 "$out/cells.tsv"
+}
+
 libs() { # outdir libsdir: every mod jar in libsdir, each with its -probe.jar
 	local out=$1 dir jar pairs=()
 	dir=$(cd "$2" && pwd) || die "no directory $2"
@@ -423,6 +440,7 @@ case ${1:-} in
 	fetch) shift; [[ $# -gt 0 ]] || set -- "${ALL_VERSIONS[@]}"; for v in "$@"; do fetch_one "$v"; done ;;
 	run) shift; run_one "$@" ;;
 	matrix) shift; matrix "$@" ;;
+	cells) shift; cells "$@" ;;
 	libs) shift; libs "$@" ;;
 	upgrade) shift; upgrade_one "$@" ;;
 	upgrades) shift; upgrades "$@" ;;

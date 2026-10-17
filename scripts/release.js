@@ -1,8 +1,10 @@
-// Release pipeline for Traveler's Journal: one jar per range of Minecraft versions.
+// Release pipeline for Traveler's Journal: one jar for every supported Minecraft version, holding
+// a jar per range of versions inside it (scripts/bundle.py).
 // Linux or WSL only, because the test matrix is a bash script that boots real servers.
 //
-//   npm run release:stage                 build every node, run the test matrix and the upgrade
-//                                         tests from every past release, and stage
+//   npm run release:stage                 build every node, run the test matrix, bundle the jars,
+//                                         test the bundle on every version, from every past
+//                                         release and through older worlds, and stage it in
 //                                         build/release/<version>/
 //   npm run release:publish [-- --dry-run]
 //                                         tag the staged commit, push it with the tag, create the
@@ -12,8 +14,8 @@
 //
 // Before staging, set mod_version in gradle.properties, add a "## [<version>]" section to
 // .product/changelog.md and commit both. Staging refuses uncommitted changes and publishing tags
-// exactly the commit that was staged; neither step commits anything. Each jar is listed for the
-// Minecraft versions it passed in the test matrix and no others. Planet Minecraft has no upload
+// exactly the commit that was staged; neither step commits anything. The jar is listed for the
+// Minecraft versions it passed on and no others. Planet Minecraft has no upload
 // API, so its step is printed for doing by hand.
 import { execFileSync, spawnSync } from 'child_process';
 import crypto from 'crypto';
@@ -35,6 +37,8 @@ const UPGRADE_FROM_MINECRAFT = '1.21.1';
 // A server on 1.20.4 or older that moves to a later Minecraft finds its books turned from NBT into
 // item components; each such jar's world is opened here, with the jar that covers it
 const WORLD_UPGRADE_TO = '1.21.1';
+// Versions inside the supported span that no jar covers; the shipped jar must be refused there
+const UNCOVERED = ['1.20.5', '1.20.6'];
 
 function fail(message) {
     console.error(`release: ${message}`);
@@ -84,8 +88,25 @@ function mcBefore(a, b) {
     return false;
 }
 
-function versionRange(gameVersions) {
-    return gameVersions.length === 1 ? gameVersions[0] : `${gameVersions[0]} to ${gameVersions.at(-1)}`;
+// Supported versions as one run per family (1.20.x, 1.21.x, 26.x): "1.20 to 1.20.4, 1.21 to 1.21.11
+// and 26.1 to 26.3". A family is the first two parts below 26, and the year from 26 on.
+function versionList(gameVersions) {
+    const family = mc => {
+        const parts = mc.split('.');
+        return Number(parts[0]) >= 26 ? parts[0] : `${parts[0]}.${parts[1]}`;
+    };
+    const runs = [];
+    for (const mc of gameVersions) {
+        const last = runs.at(-1);
+        if (last && family(last.at(-1)) === family(mc)) last.push(mc);
+        else runs.push([mc]);
+    }
+    const parts = runs.map(r => (r.length === 1 ? r[0] : `${r[0]} to ${r.at(-1)}`));
+    return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+function readTsv(file) {
+    return fs.readFileSync(file, 'utf8').trim().split('\n').map(line => line.split('\t'));
 }
 
 function stage() {
@@ -111,43 +132,58 @@ function stage() {
     });
     run(path.join(SCRIPTS, 'test-matrix.sh'), ['matrix', matrixDir, ...pairs]);
 
-    const results = fs.readFileSync(path.join(matrixDir, 'results.tsv'), 'utf8').trim().split('\n').map(line => line.split('\t'));
-    fs.mkdirSync(releaseDir, { recursive: true });
-    const entries = jars.map(file => {
-        const versionNumber = file.slice(`${MOD_NAME}-`.length, -'.jar'.length);
-        const gameVersions = results.filter(([label, , verdict]) => label === versionNumber && verdict === 'PASS').map(([, mc]) => mc);
+    const results = readTsv(path.join(matrixDir, 'results.tsv'));
+    // Each per-range jar passed inside its declared range and was refused everywhere else, so no
+    // two of them claim a version
+    const ranges = jars.map(file => {
+        const label = file.slice(`${MOD_NAME}-`.length, -'.jar'.length);
+        const gameVersions = results.filter(([l, , verdict]) => l === label && verdict === 'PASS').map(([, mc]) => mc);
         if (!gameVersions.length) fail(`${file} passed on no Minecraft version`);
-        const data = fs.readFileSync(path.join(libs, file));
-        fs.writeFileSync(path.join(releaseDir, file), data);
-        return { file, version_number: versionNumber, game_versions: gameVersions,
-            sha256: crypto.createHash('sha256').update(data).digest('hex') };
+        return { file, game_versions: gameVersions };
     });
+    const probeOf = r => path.join(libs, r.file.replace(/\.jar$/, '-probe.jar'));
+    const rangeFor = mc => ranges.find(r => r.game_versions.includes(mc)) ?? fail(`no jar passed on Minecraft ${mc}`);
+    const gameVersions = ranges.flatMap(r => r.game_versions);
+
+    // The one jar that ships holds every per-range jar, and Fabric loads the one that fits. It is
+    // tested as shipped: on every version beside the probe built for that version's range, and
+    // refused on the versions inside the span that no range covers.
+    const bundleFile = `${MOD_NAME}-${version}.jar`;
+    const bundle = path.join(libs, bundleFile);
+    run('python3', ['-I', path.join(SCRIPTS, 'bundle.py'), bundle, version, ...ranges.map(r => path.join(libs, r.file))]);
+    const bundleDir = path.join(matrixDir, 'bundle');
+    run(path.join(SCRIPTS, 'test-matrix.sh'), ['cells', bundleDir,
+        ...gameVersions.flatMap(mc => [bundle, probeOf(rangeFor(mc)), mc]),
+        ...UNCOVERED.flatMap(mc => [bundle, probeOf(ranges[0]), mc])]);
+    const cells = readTsv(path.join(bundleDir, 'cells.tsv'));
+    const expected = [...gameVersions.map(mc => [mc, 'PASS']), ...UNCOVERED.map(mc => [mc, 'REFUSED'])];
+    const wrong = expected.filter(([mc, verdict]) => cells.find(([, v]) => v === mc)?.[2] !== verdict);
+    if (wrong.length) fail(`${bundleFile} did not behave on ${wrong.map(([mc, verdict]) => `${mc} (expected ${verdict})`).join(', ')}`);
+    console.log(`bundle: passed on ${gameVersions.length} versions, refused on ${UNCOVERED.join(' and ')}`);
 
     // Every existing server must keep its journal: upgrade each past release on the version they
-    // all ran on, with the jar that covers it
-    const upgradeTarget = entries.find(e => e.game_versions.includes(UPGRADE_FROM_MINECRAFT))
-        ?? fail(`no jar passed on Minecraft ${UPGRADE_FROM_MINECRAFT}, where past releases ran`);
+    // all ran on
     run(path.join(SCRIPTS, 'test-matrix.sh'), ['upgrades', path.join(matrixDir, 'upgrades'),
-        path.join(libs, upgradeTarget.file), path.join(libs, upgradeTarget.file.replace(/\.jar$/, '-probe.jar')),
-        UPGRADE_FROM_MINECRAFT]);
+        bundle, probeOf(rangeFor(UPGRADE_FROM_MINECRAFT)), UPGRADE_FROM_MINECRAFT]);
 
-    const probeOf = e => path.join(libs, e.file.replace(/\.jar$/, '-probe.jar'));
-    const olderWorlds = entries.filter(e => mcBefore(e.game_versions.at(-1), '1.20.5'));
+    const olderWorlds = ranges.filter(r => mcBefore(r.game_versions.at(-1), '1.20.5'));
     if (olderWorlds.length) {
-        const worldTarget = entries.find(e => e.game_versions.includes(WORLD_UPGRADE_TO))
-            ?? fail(`no jar passed on Minecraft ${WORLD_UPGRADE_TO}, where older worlds are opened`);
         run(path.join(SCRIPTS, 'test-matrix.sh'), ['world-upgrades', path.join(matrixDir, 'world-upgrades'),
-            path.join(libs, worldTarget.file), probeOf(worldTarget), WORLD_UPGRADE_TO,
-            ...olderWorlds.flatMap(e => [path.join(libs, e.file), probeOf(e), e.game_versions.at(-1)])]);
+            bundle, probeOf(rangeFor(WORLD_UPGRADE_TO)), WORLD_UPGRADE_TO,
+            ...olderWorlds.flatMap(r => [bundle, probeOf(r), r.game_versions.at(-1)])]);
     }
 
-    const table = ['| Minecraft | File |', '|---|---|',
-        ...entries.map(e => `| ${versionRange(e.game_versions)} | \`${e.file}\` |`)].join('\n');
+    fs.mkdirSync(releaseDir, { recursive: true });
+    const data = fs.readFileSync(bundle);
+    fs.writeFileSync(path.join(releaseDir, bundleFile), data);
+    const entries = [{ file: bundleFile, version_number: version, game_versions: gameVersions,
+        sha256: crypto.createHash('sha256').update(data).digest('hex') }];
+    const supported = versionList(gameVersions);
     fs.writeFileSync(path.join(releaseDir, 'release-notes.md'),
-        `${notes}\n\n## Downloads\n\nOne jar per range of Minecraft versions. Each needs Fabric Loader and Fabric API.\n\n${table}\n`);
+        `${notes}\n\n## Download\n\nOne jar, \`${bundleFile}\`, for every supported Minecraft version: ${supported}. It needs Fabric Loader and Fabric API.\n`);
     fs.writeFileSync(path.join(releaseDir, 'SHA256SUMS'), entries.map(e => `${e.sha256}  ${e.file}\n`).join(''));
-    fs.writeFileSync(path.join(releaseDir, 'manifest.json'), JSON.stringify({ version, commit, entries }, null, 2) + '\n');
-    console.log(`\nStaged ${TITLE} ${version} from ${commit.slice(0, 7)} in ${releaseDir}:\n\n${table}`);
+    fs.writeFileSync(path.join(releaseDir, 'manifest.json'), JSON.stringify({ version, commit, entries, ranges }, null, 2) + '\n');
+    console.log(`\nStaged ${TITLE} ${version} from ${commit.slice(0, 7)} in ${releaseDir}:\n\n${bundleFile}, for Minecraft ${supported}`);
 }
 
 function step(dryRun, command, args) {
@@ -168,7 +204,8 @@ async function modrinth(manifest, dir, notes, dryRun) {
     }
     for (const e of manifest.entries) {
         const data = {
-            name: `${TITLE} ${manifest.version} for Minecraft ${versionRange(e.game_versions)}`,
+            // The game versions are tagged; Modrinth caps a version's name at 64 characters
+            name: `${TITLE} ${manifest.version}`,
             version_number: e.version_number,
             changelog: notes,
             dependencies: [{ project_id: MODRINTH_FABRIC_API, dependency_type: 'required' }],
@@ -219,7 +256,7 @@ async function curseforge(manifest, dir, notes, dryRun) {
         const metadata = {
             changelog: notes,
             changelogType: 'markdown',
-            displayName: `${TITLE} ${manifest.version} for Minecraft ${versionRange(e.game_versions)}`,
+            displayName: `${TITLE} ${manifest.version}`,
             gameVersions: [...ids, fabric.id, ...(server ? [server.id] : [])],
             releaseType: 'release',
             relations: { projects: [{ slug: 'fabric-api', type: 'requiredDependency' }] },
@@ -259,9 +296,9 @@ async function publish(dryRun) {
     await modrinth(manifest, dir, notes, dryRun);
     await curseforge(manifest, dir, notes, dryRun);
 
-    const newest = manifest.entries.at(-1);
-    console.log(`\nPlanet Minecraft (by hand): a post holds one file. On the Updates tab of post 7073620, upload ${newest.file}`
-        + ` and set the game version to ${newest.game_versions.at(-1)}; the description should name the full range and link Modrinth for the other jars.`);
+    const jar = manifest.entries[0];
+    console.log(`\nPlanet Minecraft (by hand): on the Updates tab of post 7073620, upload ${jar.file} and set the game version`
+        + ` to ${jar.game_versions.at(-1)}; the description should name every supported version: ${versionList(jar.game_versions)}.`);
 }
 
 const [command, ...flags] = process.argv.slice(2);

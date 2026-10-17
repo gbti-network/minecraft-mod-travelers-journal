@@ -15,28 +15,18 @@ A Minecraft mod that provides players with a special journal that updates its co
 ## 🚀 Installation
 
 1. Install [Fabric Loader](https://fabricmc.net/use/)
-2. Download the latest version of Traveler's Journal from the releases page, choosing the jar for your server's Minecraft version (see below)
+2. Download the latest `travelers-journal-<version>.jar` from the releases page. The same jar works on every supported Minecraft version (see below)
 3. Place the .jar file in your server's `mods` folder
 4. Install the required dependencies:
    - Fabric API
 
 ### Supported Minecraft versions
 
-Each release has one jar per range of Minecraft versions. The range is in the file name, and Fabric refuses a jar on any version outside it.
+One jar runs on Minecraft 1.20 to 1.20.4, 1.21 to 1.21.11 and 26.1 to 26.3. It carries a build for each range of versions, and Fabric loads the one that matches your server, so a server that moves to another supported version keeps the same jar. On 1.20.5 and 1.20.6, Fabric refuses it at startup.
 
-| Minecraft | Jar |
-|---|---|
-| 1.20 to 1.20.1 | `travelers-journal-<version>+mc1.20-1.20.1.jar` |
-| 1.20.2 to 1.20.4 | `travelers-journal-<version>+mc1.20.2-1.20.4.jar` |
-| 1.21 to 1.21.1 | `travelers-journal-<version>+mc1.21-1.21.1.jar` |
-| 1.21.2 to 1.21.4 | `travelers-journal-<version>+mc1.21.2-1.21.4.jar` |
-| 1.21.5 | `travelers-journal-<version>+mc1.21.5.jar` |
-| 1.21.6 to 1.21.10 | `travelers-journal-<version>+mc1.21.6-1.21.10.jar` |
-| 1.21.11 | `travelers-journal-<version>+mc1.21.11.jar` |
-| 26.1 to 26.2 | `travelers-journal-<version>+mc26.1-26.2.jar` |
-| 26.3 | `travelers-journal-<version>+mc26.3.jar` |
+The server needs the Java version its Minecraft needs: 17 or newer for 1.20.x, 21 for 1.21.x and 25 for 26.x. The in-game manager uses Minecraft's server dialogs, which start at 1.21.6; on 1.20 to 1.21.5 the journals are edited as files.
 
-The 1.20.x jars need Java 17 or newer, the 1.21.x jars Java 21 and the 26.x jars Java 25, as Minecraft itself does. There is no jar for 1.20.5 or 1.20.6. The in-game manager uses Minecraft's server dialogs, which start at 1.21.6; on 1.20 to 1.21.5 the journals are edited as files.
+Fabric's mod list shows the jar as two entries: Traveler's Journal, and the build for your version (`travelers-journal-mc`).
 
 ### Upgrading
 
