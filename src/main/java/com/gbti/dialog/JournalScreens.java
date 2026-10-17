@@ -53,7 +53,8 @@ public final class JournalScreens {
         List<DialogBody> body = new ArrayList<>();
         if (status != null) body.add(Widgets.line(status.line()));
         String count = journals.size() == 1 ? "1 journal." : journals.size() + " journals.";
-        body.add(Widgets.line(Component.literal(count + " The ones marked first join go to every new player once.")));
+        body.add(Widgets.icon(JournalBook.create(Journals.defaultJournal()),
+                Component.literal(count + " The ones marked first join go to every new player once.")));
 
         List<ActionButton> buttons = new ArrayList<>();
         for (Journal journal : journals) {
@@ -74,7 +75,8 @@ public final class JournalScreens {
     static void editor(ServerPlayer player, Journal journal, Form form, Status status) {
         List<DialogBody> body = new ArrayList<>();
         if (status != null) body.add(Widgets.line(status.line()));
-        body.add(Widgets.line(grey("Id " + journal.id() + ", saved in " + journal.textName())));
+        // The journal as players hold it; its tooltip shows the saved title and author
+        body.add(Widgets.icon(JournalBook.create(journal), grey("Id " + journal.id() + ", saved in " + journal.textName())));
         if (form.text() == null) {
             body.add(Widgets.line(grey("This journal has " + String.format(Locale.ROOT, "%,d", journal.text().length())
                     + " characters, more than the editor holds (" + String.format(Locale.ROOT, "%,d", Form.TEXT_MAX) + "). Edit "
@@ -108,6 +110,7 @@ public final class JournalScreens {
 
     public static void confirmDelete(ServerPlayer player, Journal journal) {
         List<DialogBody> body = List.of(
+                Widgets.icon(JournalBook.create(journal), grey("Id " + journal.id() + ", by " + journal.author())),
                 Widgets.line(Component.literal("New players stop getting it. Its files move to backups/journals/" + journal.id()
                         + ", so it can be restored by hand.")),
                 Widgets.line(grey("Copies players already carry stay as signed books.")));
@@ -122,6 +125,11 @@ public final class JournalScreens {
         List<String> lines = form.text() == null ? journal.lines() : Arrays.asList(form.text().split("\n", -1));
         List<Component> pages = JournalBook.pages(lines, true);
         List<DialogBody> body = new ArrayList<>();
+        // The book as it would be with these values; its tooltip shows the unsaved title and author
+        String author = form.author().isEmpty() ? journal.author() : form.author();
+        String bookTitle = form.title().isEmpty() ? journal.title() : form.title();
+        body.add(Widgets.icon(JournalBook.create(journal.id(), bookTitle, author, lines),
+                grey(pages.size() == 1 ? "1 page, by " + author : pages.size() + " pages, by " + author)));
         for (int i = 0; i < pages.size(); i++) {
             BookLayout.Page page = BookLayout.layout(pages.get(i), grey("Page " + (i + 1) + " of " + pages.size()));
             body.add(Widgets.line(page.text(), BookLayout.MESSAGE_WIDTH));

@@ -33,15 +33,20 @@ public final class JournalBook {
     }
 
     public static ItemStack create(Journal journal) {
+        return create(journal.id(), journal.title(), journal.author(), journal.lines());
+    }
+
+    // A copy from values not saved yet, as the manager's preview shows it
+    public static ItemStack create(String id, String title, String author, List<String> lines) {
         List<Filterable<Component>> pages = new ArrayList<>();
-        for (Component page : pages(journal.lines(), false)) {
+        for (Component page : pages(lines, false)) {
             pages.add(Filterable.passThrough(page));
         }
         ItemStack book = new ItemStack(Items.WRITTEN_BOOK);
         book.set(DataComponents.WRITTEN_BOOK_CONTENT,
-                new WrittenBookContent(Filterable.passThrough(bookTitle(journal.title())), journal.author(), 0, pages, true));
+                new WrittenBookContent(Filterable.passThrough(bookTitle(title)), author, 0, pages, true));
         CompoundTag tag = new CompoundTag();
-        tag.putString(ID_KEY, journal.id());
+        tag.putString(ID_KEY, id);
         book.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
         return book;
     }

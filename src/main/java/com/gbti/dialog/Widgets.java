@@ -13,7 +13,12 @@ import net.minecraft.server.dialog.Input;
 import net.minecraft.server.dialog.action.Action;
 import net.minecraft.server.dialog.action.CustomAll;
 import net.minecraft.server.dialog.body.DialogBody;
+import net.minecraft.server.dialog.body.ItemBody;
 import net.minecraft.server.dialog.body.PlainMessage;
+import net.minecraft.world.item.ItemStack;
+//? if >=26.1 {
+import net.minecraft.world.item.ItemStackTemplate;
+//?}
 import net.minecraft.server.dialog.input.BooleanInput;
 import net.minecraft.server.dialog.input.TextInput;
 import net.minecraft.server.level.ServerPlayer;
@@ -33,6 +38,7 @@ import java.util.Optional;
  */
 final class Widgets {
     static final int WIDE = 300;
+    private static final int ICON = 24;
     // A multi-line box of about ten lines; the client scrolls the rest
     private static final int TEXT_HEIGHT = 100;
 
@@ -49,6 +55,16 @@ final class Widgets {
 
     static DialogBody line(Component text, int width) {
         return new PlainMessage(text, width);
+    }
+
+    // An item drawn in the dialog with its tooltip on hover, after Jockey Radio's disc icons
+    static DialogBody icon(ItemStack item, Component caption) {
+        Optional<PlainMessage> description = caption == null ? Optional.empty() : Optional.of(new PlainMessage(caption, 260));
+        //? if >=26.1 {
+        return new ItemBody(ItemStackTemplate.fromNonEmptyStack(item), description, true, true, ICON, ICON);
+        //?} else {
+        /*return new ItemBody(item, description, true, true, ICON, ICON);
+        *///?}
     }
 
     static ActionButton button(String label, int width, String action, CompoundTag additions) {

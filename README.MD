@@ -66,6 +66,7 @@ On Minecraft 1.21.6 and later, an operator who types `/journals` gets the manage
 - **The hub** lists every journal, marked `first join` or `by command`, with Create journal and Reload from files.
 - **The editor** holds the book title (up to 32 characters), the author, a "Give on first join" switch and the text in one box, in the same markup as the files. Save writes the files, keeping the previous text as a `.bak` file beside it. Preview shows the pages as they will read, without saving.
 - **Give to me** puts a copy in your inventory, and **Delete journal** asks first, then moves the journal's folder to a backup.
+- Each screen shows the journal's book as an icon; hover over it to see the title and author as players will.
 
 The server checks every button press again, so only operators at the configured level can change anything. The editor's box holds 15,000 characters; a longer journal opens without the box and is edited as a file.
 

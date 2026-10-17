@@ -21,6 +21,7 @@ import net.minecraft.server.dialog.Input;
 import net.minecraft.server.dialog.MultiActionDialog;
 import net.minecraft.server.dialog.NoticeDialog;
 import net.minecraft.server.dialog.body.DialogBody;
+import net.minecraft.server.dialog.body.ItemBody;
 import net.minecraft.server.dialog.body.PlainMessage;
 import net.minecraft.server.dialog.input.TextInput;
 import net.minecraft.server.level.ServerPlayer;
@@ -47,7 +48,7 @@ import static com.gbti.probe.ProbeSupport.oneLine;
  * sends back is read from the mock player's channel.
  */
 final class DialogProbe {
-    static final int CHECKS = 12;
+    static final int CHECKS = 13;
     private static final Path FOLDERS = Path.of("config/travelers-journal/journals");
     private static final Path MADE = FOLDERS.resolve("probe-dialog");
     private static final Path LONG = FOLDERS.resolve("probe-long");
@@ -68,6 +69,7 @@ final class DialogProbe {
 
         // A player's bare /journals opens the hub
         as(server, "journals");
+        boolean hubIcon = hasIcon();
         checks.check("dialog-hub-opens", shown instanceof MultiActionDialog hub && title().equals("Traveler's Journals")
                 && labels(hub).contains("Create journal") && labels(hub).stream().anyMatch(label -> label.startsWith("Traveler's Journal")),
                 "shown " + describe());
@@ -92,6 +94,7 @@ final class DialogProbe {
 
         // Preview shows the unsaved text as pages and saves nothing
         click("preview", form("probe-dialog", "Saved by dialog", "Probe", true, "Page one\n[page]\nPage two\n[page]\nPage three"));
+        boolean previewIcon = hasIcon() && body().contains("3 pages, by Probe");
         checks.check("dialog-preview", shown instanceof NoticeDialog && body().contains("Page 1 of 3") && body().contains("Page 3 of 3")
                 && body().contains("Page two") && Files.readString(MADE.resolve("journal.md")).equals(text), "shown " + describe());
 
@@ -101,8 +104,8 @@ final class DialogProbe {
         String paragraph = "A long paragraph that the book wraps over several lines, word by word, the way a player reads it.";
         String crowded = paragraph + "\n" + String.join("\n", java.util.Collections.nCopies(13, "Short line"));
         click("preview", form("probe-dialog", "Saved by dialog", "Probe", true, crowded));
-        List<Integer> widths = shown instanceof NoticeDialog && common().body().get(0) instanceof PlainMessage page
-                ? BookLayout.lineWidths(page.contents()) : List.of();
+        List<Integer> widths = shown instanceof NoticeDialog ? common().body().stream().filter(PlainMessage.class::isInstance)
+                .map(part -> BookLayout.lineWidths(((PlainMessage) part).contents())).findFirst().orElse(List.of()) : List.of();
         boolean padded = widths.size() == 1 + BookLayout.PAGE_LINES
                 && widths.stream().allMatch(width -> width >= BookLayout.PAGE_WIDTH - 4 && width <= BookLayout.PAGE_WIDTH);
         checks.check("dialog-preview-layout", padded && body().contains("Page 2 of 2") && !body().contains("will not show"),
@@ -110,6 +113,7 @@ final class DialogProbe {
 
         // The default journal is switched off, never deleted, so its editor has no Delete
         click("edit", form(Journal.DEFAULT_ID));
+        boolean editorIcon = hasIcon() && body().contains("Id default, saved in travelers_journal.md");
         boolean defaultHasDelete = shown instanceof MultiActionDialog editor && labels(editor).contains("Delete journal");
         click("edit", form("probe-dialog"));
         boolean madeHasDelete = shown instanceof MultiActionDialog editor && labels(editor).contains("Delete journal");
@@ -140,6 +144,9 @@ final class DialogProbe {
 
         // Delete asks first, then moves the folder to a backup and returns to the hub
         click("delete_ask", form("probe-dialog"));
+        boolean deleteIcon = hasIcon();
+        checks.check("dialog-icons", hubIcon && editorIcon && previewIcon && deleteIcon, "hub " + hubIcon + ", editor " + editorIcon
+                + ", preview " + previewIcon + ", delete " + deleteIcon);
         boolean asked = shown instanceof ConfirmationDialog && title().equals("Delete Saved by dialog?");
         click("delete", form("probe-dialog"));
         checks.check("dialog-delete", asked && Journals.get("probe-dialog") == null && !Files.exists(MADE)
@@ -215,11 +222,17 @@ final class DialogProbe {
         return common() == null ? "" : common().title().getString();
     }
 
+    // A journal book drawn as an item, as Jockey Radio draws its discs
+    private boolean hasIcon() {
+        return common() != null && common().body().stream().anyMatch(part -> part instanceof ItemBody);
+    }
+
     private String body() {
         if (common() == null) return "";
         StringBuilder text = new StringBuilder();
         for (DialogBody part : common().body()) {
             if (part instanceof PlainMessage message) text.append(message.contents().getString()).append('\n');
+            if (part instanceof ItemBody item) item.description().ifPresent(caption -> text.append(caption.contents().getString()).append('\n'));
         }
         return text.toString();
     }
