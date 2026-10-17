@@ -10,7 +10,7 @@ Any changes made to the markdown file will auto update across all held copies of
 - An in-game journal manager on Minecraft 1.21.6 and later: `/journals` opens it for operators
 - Automatic distribution system that gives new players a journal on first join
 - Real-time content updates through simple markdown files
-- Built-in preview system for testing formatting
+- A preview of each journal's pages in the in-game manager (1.21.6 and later)
 - Supports rich text formatting including colors and lists
 
 ## Technical Specifications
@@ -29,8 +29,8 @@ Any changes made to the markdown file will auto update across all held copies of
 ## Implementation
 The mod operates through a server-side configuration system located in `config/travelers-journal/`. Administrators can modify journal content through standard text files using supported formatting syntax.
 
-## Preview System
-Includes a browser-based preview tool for testing journal formatting before deployment. Located in `config/travelers-journal/preview/`.
+## Preview
+On Minecraft 1.21.6 and later, the in-game manager (`/journals`) shows each journal's pages laid out as the book shows them, before anything is saved.
 
 ## Formatting Guide
 The journal supports the following formatting options:
@@ -48,28 +48,12 @@ Unordered lists using dashes:
 
 
 ### Colors
-Use `&` or `§` followed by a color code:
-- `&0` or `§0` - Black
-- `&1` or `§1` - Dark Blue
-- `&2` or `§2` - Dark Green
-- `&3` or `§3` - Dark Aqua
-- `&4` or `§4` - Dark Red
-- `&5` or `§5` - Dark Purple
-- `&6` or `§6` - Gold
-- `&7` or `§7` - Gray
-- `&8` or `§8` - Dark Gray
-- `&9` or `§9` - Blue
-- `&a` or `§a` - Green
-- `&b` or `§b` - Aqua
-- `&c` or `§c` - Red
-- `&d` or `§d` - Light Purple
-- `&e` or `§e` - Yellow
-- `&f` or `§f` - White
+Wrap text in a colour name: `<red>text<>`. The names are `black`, `dark_blue`, `dark_green`, `dark_aqua`, `dark_red`, `dark_purple`, `gold`, `gray`, `dark_gray`, `blue`, `green`, `aqua`, `red`, `light_purple`, `yellow` and `white`.
 
 Example:
-`&cThis text will be red`
+`<red>This text will be red<>`
 
 ### Page Management
 - Create a new page: Insert `[page]` on a new line. Otherwise the book will automatically paginate.
 
-To test formatting, use the provided preview system in the `config/travelers-journal/preview/` folder. Or access it through our hosted [Minecraft Book Preview Application](https://gbti.network/wp-content/uploads/travelers-journal-preview/)
+To check a journal's layout, open it in the in-game manager's preview (1.21.6 and later), or give yourself a copy and read it.

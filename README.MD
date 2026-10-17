@@ -10,7 +10,7 @@ A Minecraft mod that provides players with a special journal that updates its co
 - An in-game journal manager on Minecraft 1.21.6 and later
 - Server-side implementation for multiplayer compatibility
 - Customizable content through configuration
-- Real-time preview system for journal formatting
+- A preview of each journal's pages in the in-game manager (1.21.6 and later)
 
 ## 🚀 Installation
 
@@ -35,7 +35,7 @@ Replace the old jar in your `mods` folder with the new one and restart. The file
 - the journals your players already carry, including ones under a legacy title, which refresh the next time they are used;
 - players already on the join list, who do not get a second copy.
 
-Your journal becomes the journal `default`, still read from those same files. Nothing is moved or rewritten, so going back to an earlier release finds everything where it left it. Every release is tested upgrading from each earlier release.
+Your journal becomes the journal `default`, still read from those same files. Nothing is moved or rewritten, so going back to an earlier release finds everything where it left it. Every release is tested upgrading from each earlier release, and going back to each one.
 
 Moving your world to a newer Minecraft keeps the journals too. Up to 1.20.4 a book is stored differently, and Minecraft converts it when the world opens on a later version; each copy still belongs to its journal and refreshes when used.
 
@@ -105,26 +105,6 @@ Create or edit `config/travelers-journal/travelers_journal.md` (or a journal's `
   - `dark_gray`, `blue`, `green`, `aqua`
   - `red`, `light_purple`, `yellow`, `white`
 - Page breaks: Use `[page]` to start a new page. A page also ends when it fills the 14 lines the book shows, counting lines as the book wraps them, and a line too long for what is left carries on at the top of the next page.
-
-### 📝 Preview Your Journal
-
-After installing the mod, you can preview how your journal will look in-game:
-
-1. Navigate to `config/travelers-journal/preview/`
-2. Open `index.html` in your web browser
-3. Edit your journal content in the left panel
-4. See a real-time preview on the right
-
-The preview supports:
-- Page breaks with `[page]`
-- Markdown-style formatting:
-  - Bold: `**text**`
-  - Italic: `*text*`
-  - Underline: `_text_`
-- Color codes: `<c>text<>` where c is 0-9 or a-f
-- Bullet points: Start a line with `- `
-
-This makes it easy to format and test your journal content before players see it in-game!
 
 ## 🤝 Support
 
