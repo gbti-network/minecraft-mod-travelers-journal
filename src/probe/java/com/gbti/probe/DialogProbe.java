@@ -69,16 +69,20 @@ final class DialogProbe {
 
         // A player's bare /journals opens the hub
         as(server, "journals");
-        boolean hubIcon = hasIcon();
+        // The hub's one icon is a plain book with no tooltip, its caption box sized to the count so
+        // the pair sits centred (owner, 2026-10-16)
+        boolean hubIcon = common() != null && common().body().stream().filter(ItemBody.class::isInstance).map(ItemBody.class::cast)
+                .anyMatch(icon -> !icon.showTooltip() && icon.description().map(caption -> caption.width() < 100).orElse(false));
         checks.check("dialog-hub-opens", shown instanceof MultiActionDialog hub && title().equals("Traveler's Journals")
                 && labels(hub).contains("Create journal") && labels(hub).stream().anyMatch(label -> label.startsWith("Traveler's Journal")),
                 "shown " + describe());
-        // Titles in yellow, "first join" in green beside the ones new players get, and nothing else
-        // (owner, 2026-10-16): the journal JournalsProbe made by command shows its title alone
+        // Each journal by its title alone, in yellow (owner, 2026-10-16), whether it goes to new
+        // players or not, and the count line says nothing more
         boolean hubStyled = shown instanceof MultiActionDialog styled && body().trim().equals(Journals.all().size() + " journals.")
-                && labels(styled).contains("Pages") && labels(styled).contains("Traveler's Journal  first join")
-                && styled.actions().stream().map(button -> button.button().label()).filter(label -> label.getString().startsWith("Traveler's Journal"))
-                        .allMatch(label -> colour(label, "Traveler's Journal", ChatFormatting.YELLOW) && colour(label, "  first join", ChatFormatting.GREEN));
+                && labels(styled).contains("Pages") && labels(styled).contains("Traveler's Journal") && labels(styled).contains("Welcome aboard")
+                && styled.actions().stream().map(button -> button.button().label())
+                        .filter(label -> Journals.all().stream().anyMatch(journal -> journal.title().equals(label.getString())))
+                        .allMatch(label -> colour(label, label.getString(), ChatFormatting.YELLOW));
 
         // Create, then Save, through the buttons
         click("create", form("", "Dialog journal", "Probe", false, "Made in a dialog").putting("id", "probe-dialog"));

@@ -6,7 +6,6 @@ import com.gbti.Journals;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.dialog.ActionButton;
 import net.minecraft.server.dialog.ConfirmationDialog;
 import net.minecraft.server.dialog.Input;
@@ -14,6 +13,8 @@ import net.minecraft.server.dialog.MultiActionDialog;
 import net.minecraft.server.dialog.NoticeDialog;
 import net.minecraft.server.dialog.body.DialogBody;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,13 +54,13 @@ public final class JournalScreens {
         List<DialogBody> body = new ArrayList<>();
         if (status != null) body.add(Widgets.line(status.line()));
         String count = journals.size() == 1 ? "1 journal." : journals.size() + " journals.";
-        body.add(Widgets.icon(JournalBook.create(Journals.defaultJournal()), Component.literal(count)));
+        // One icon for the whole list, so a plain book with no tooltip (owner, 2026-10-16)
+        body.add(Widgets.icon(new ItemStack(Items.WRITTEN_BOOK), Component.literal(count), false));
 
-        // Each journal's title in yellow, marked in green when it goes to new players (owner, 2026-10-16)
+        // Each journal by its title alone, in yellow (owner, 2026-10-16); the editor shows its give rule
         List<ActionButton> buttons = new ArrayList<>();
         for (Journal journal : journals) {
-            MutableComponent label = Component.literal(journal.title()).withStyle(ChatFormatting.YELLOW);
-            if (journal.giveOnJoin()) label.append(Component.literal("  first join").withStyle(ChatFormatting.GREEN));
+            Component label = Component.literal(journal.title()).withStyle(ChatFormatting.YELLOW);
             buttons.add(Widgets.button(label, BUTTON, "edit", Form.of(journal).journalTag()));
         }
         buttons.add(Widgets.button("Create journal", BUTTON, "create_form", new CompoundTag()));
@@ -76,7 +77,7 @@ public final class JournalScreens {
         List<DialogBody> body = new ArrayList<>();
         if (status != null) body.add(Widgets.line(status.line()));
         // The journal as players hold it; its tooltip shows the saved title and author
-        body.add(Widgets.icon(JournalBook.create(journal), grey("Id " + journal.id() + ", saved in " + journal.textName())));
+        body.add(Widgets.icon(JournalBook.create(journal), grey("Id " + journal.id() + ", saved in " + journal.textName()), true));
         if (form.text() == null) {
             body.add(Widgets.line(grey("This journal has " + String.format(Locale.ROOT, "%,d", journal.text().length())
                     + " characters, more than the editor holds (" + String.format(Locale.ROOT, "%,d", Form.TEXT_MAX) + "). Edit "
@@ -110,7 +111,7 @@ public final class JournalScreens {
 
     public static void confirmDelete(ServerPlayer player, Journal journal) {
         List<DialogBody> body = List.of(
-                Widgets.icon(JournalBook.create(journal), grey("Id " + journal.id() + ", by " + journal.author())),
+                Widgets.icon(JournalBook.create(journal), grey("Id " + journal.id() + ", by " + journal.author()), true),
                 Widgets.line(Component.literal("New players stop getting it. Its files move to backups/journals/" + journal.id()
                         + ", so it can be restored by hand.")),
                 Widgets.line(grey("Copies players already carry stay as signed books.")));
@@ -129,7 +130,7 @@ public final class JournalScreens {
         String author = form.author().isEmpty() ? journal.author() : form.author();
         String bookTitle = form.title().isEmpty() ? journal.title() : form.title();
         body.add(Widgets.icon(JournalBook.create(journal.id(), bookTitle, author, lines),
-                grey(pages.size() == 1 ? "1 page, by " + author : pages.size() + " pages, by " + author)));
+                grey(pages.size() == 1 ? "1 page, by " + author : pages.size() + " pages, by " + author), true));
         for (int i = 0; i < pages.size(); i++) {
             BookLayout.Page page = BookLayout.layout(pages.get(i), grey("Page " + (i + 1) + " of " + pages.size()));
             body.add(Widgets.line(page.text(), BookLayout.MESSAGE_WIDTH));

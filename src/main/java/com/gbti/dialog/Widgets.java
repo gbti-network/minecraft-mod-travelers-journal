@@ -39,6 +39,7 @@ import java.util.Optional;
 final class Widgets {
     static final int WIDE = 300;
     private static final int ICON = 24;
+    private static final int CAPTION_MAX = 260;
     // A multi-line box of about ten lines; the client scrolls the rest
     private static final int TEXT_HEIGHT = 100;
 
@@ -57,13 +58,16 @@ final class Widgets {
         return new PlainMessage(text, width);
     }
 
-    // An item drawn in the dialog with its tooltip on hover, after Jockey Radio's disc icons
-    static DialogBody icon(ItemStack item, Component caption) {
-        Optional<PlainMessage> description = caption == null ? Optional.empty() : Optional.of(new PlainMessage(caption, 260));
+    // An item drawn in the dialog, after Jockey Radio's disc icons, with its tooltip on hover when
+    // the item has one worth showing. The caption's box is sized to its text (plus the widget's 4 px
+    // padding a side), so the icon and caption sit centred as a pair.
+    static DialogBody icon(ItemStack item, Component caption, boolean tooltip) {
+        Optional<PlainMessage> description = caption == null ? Optional.empty()
+                : Optional.of(new PlainMessage(caption, Math.min(CAPTION_MAX, BookLayout.width(caption) + 9)));
         //? if >=26.1 {
-        return new ItemBody(ItemStackTemplate.fromNonEmptyStack(item), description, true, true, ICON, ICON);
+        return new ItemBody(ItemStackTemplate.fromNonEmptyStack(item), description, true, tooltip, ICON, ICON);
         //?} else {
-        /*return new ItemBody(item, description, true, true, ICON, ICON);
+        /*return new ItemBody(item, description, true, tooltip, ICON, ICON);
         *///?}
     }
 
