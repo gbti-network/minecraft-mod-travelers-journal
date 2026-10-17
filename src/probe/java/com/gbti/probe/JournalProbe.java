@@ -9,18 +9,15 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.network.Filterable;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.WrittenBookContent;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -92,10 +89,17 @@ public class JournalProbe implements ModInitializer {
     public void onInitialize() {
         // test-matrix.sh upgrade writes this file to run the two halves of an upgrade test instead
         String mode = mode();
+        if (mode.startsWith("world-")) {
+            new WorldUpgradeProbe(mode.equals("world-before")).register();
+            return;
+        }
+        // No release before 2.0.0 ran below 1.20.5, so those jars have no upgrade test
+        //? if >=1.20.5 {
         if (mode.startsWith("upgrade-")) {
             new UpgradeProbe(mode.equals("upgrade-before")).register();
             return;
         }
+        //?}
         journals = new JournalsProbe(checks);
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             ProbeSupport.LOG.info("[TJ-PROBE] START expect={}", CHECKS + JournalsProbe.CHECKS + DIALOG_CHECKS);
@@ -152,13 +156,13 @@ public class JournalProbe implements ModInitializer {
 
         // A new player receives the journal once, with the right text and formatting
         checks.check("join-gives-one", copies(alice, journal) == 1, "journals after first join: " + copies(alice, journal));
-        WrittenBookContent content = firstCopy(alice, journal).get(DataComponents.WRITTEN_BOOK_CONTENT);
+        JournalBook.Contents content = JournalBook.contents(firstCopy(alice, journal));
         checks.check("book-content", content != null, "no written book content");
         if (content == null) return;
-        checks.check("title-author", content.title().raw().equals("Traveler's Journal") && content.author().equals("Server"),
-                content.title().raw() + " by " + content.author());
+        checks.check("title-author", content.title().equals("Traveler's Journal") && content.author().equals("Server"),
+                content.title() + " by " + content.author());
         checks.check("page-count", content.pages().size() == 3, "pages: " + content.pages().size());
-        Component page = content.pages().get(0).raw();
+        Component page = content.pages().get(0);
         checks.check("page-text", page.getString().equals(PAGE_ONE), "page 1 reads: " + oneLine(page.getString()));
         checks.check("bold", styleOf(page, "Bold").isBold() && !styleOf(page, "Bold").isItalic(), styleOf(page, "Bold").toString());
         checks.check("italic", styleOf(page, "Italic").isItalic() && !styleOf(page, "Italic").isBold(), styleOf(page, "Italic").toString());
@@ -216,15 +220,13 @@ public class JournalProbe implements ModInitializer {
         checks.check("offhand-keeps-hotbar", main.getItem() == Items.STONE && main.getCount() == 7, "main hand now: " + main);
 
         // A journal under a legacy title, as releases before 1.3.0 left them, is recognised and replaced
-        ItemStack legacy = new ItemStack(Items.WRITTEN_BOOK);
-        legacy.set(DataComponents.WRITTEN_BOOK_CONTENT, new WrittenBookContent(Filterable.passThrough("Travelers Journal"),
-                "Someone", 0, List.of(Filterable.passThrough(Component.literal("old text"))), true));
+        ItemStack legacy = JournalBook.book("Travelers Journal", "Someone", List.of(Component.literal("old text")));
         alice.getInventory().clearContent();
         alice.setItemInHand(InteractionHand.MAIN_HAND, legacy);
         use(server, alice, InteractionHand.MAIN_HAND);
         ItemStack replaced = alice.getItemInHand(InteractionHand.MAIN_HAND);
-        WrittenBookContent replacedContent = replaced.get(DataComponents.WRITTEN_BOOK_CONTENT);
-        checks.check("legacy-title", replacedContent != null && replacedContent.title().raw().equals("Traveler's Journal")
+        JournalBook.Contents replacedContent = JournalBook.contents(replaced);
+        checks.check("legacy-title", replacedContent != null && replacedContent.title().equals("Traveler's Journal")
                 && text(replaced).contains(UPDATED) && Journal.DEFAULT_ID.equals(JournalBook.taggedId(replaced)),
                 "legacy book not replaced with a tagged default journal");
 

@@ -6,15 +6,11 @@ import com.gbti.Journals;
 import com.gbti.utils.BookFont;
 import com.mojang.brigadier.tree.CommandNode;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.network.Filterable;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.WrittenBookContent;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -89,9 +85,9 @@ final class JournalsProbe {
                 && Files.readString(WELCOME.resolve("joinlist.txt")).contains(bob.getStringUUID()),
                 "default " + copies(bob, standard) + ", welcome " + copies(bob, welcome) + ", guide " + copies(bob, guide));
         ItemStack welcomeCopy = firstCopy(bob, welcome);
-        WrittenBookContent content = welcomeCopy.get(DataComponents.WRITTEN_BOOK_CONTENT);
+        JournalBook.Contents content = JournalBook.contents(welcomeCopy);
         checks.check("book-tagged", "probe-welcome".equals(JournalBook.taggedId(welcomeCopy)) && content != null
-                && content.title().raw().equals("Welcome aboard") && content.author().equals("Probe Inn"),
+                && content.title().equals("Welcome aboard") && content.author().equals("Probe Inn"),
                 "tag " + JournalBook.taggedId(welcomeCopy) + ", title " + titleOf(welcomeCopy));
 
         String gave = said(server, "journals give ProbeBob probe-guide");
@@ -144,9 +140,7 @@ final class JournalsProbe {
 
         // Renaming the default journal keeps its old title, so untagged copies are still recognised
         Journals.save(standard, "Renamed Journal", standard.author(), true, null);
-        ItemStack untagged = new ItemStack(Items.WRITTEN_BOOK);
-        untagged.set(DataComponents.WRITTEN_BOOK_CONTENT, new WrittenBookContent(Filterable.passThrough("Traveler's Journal"),
-                "Someone", 0, List.of(Filterable.passThrough(Component.literal("old text"))), true));
+        ItemStack untagged = JournalBook.book("Traveler's Journal", "Someone", List.of(Component.literal("old text")));
         checks.check("rename-keeps-legacy", Journals.defaultJournal().title().equals("Renamed Journal")
                 && Journals.defaultJournal().legacyTitles().contains("Traveler's Journal")
                 && JournalBook.journalOf(untagged) == Journals.defaultJournal(), "legacy titles " + Journals.defaultJournal().legacyTitles());
@@ -179,8 +173,8 @@ final class JournalsProbe {
     }
 
     private static List<Component> pagesOf(Journal journal) {
-        WrittenBookContent content = JournalBook.create(journal).get(DataComponents.WRITTEN_BOOK_CONTENT);
-        return content == null ? List.of() : content.pages().stream().map(Filterable::raw).toList();
+        JournalBook.Contents content = JournalBook.contents(JournalBook.create(journal));
+        return content == null ? List.of() : content.pages();
     }
 
     private static boolean backupHas(String file) throws Exception {

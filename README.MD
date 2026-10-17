@@ -1,6 +1,6 @@
 # 📖 Traveler's Journal
 
-A Minecraft mod that provides players with a special journal that updates its contents dynamically. Built with Fabric for every Minecraft version from 1.21 to 26.3.
+A Minecraft mod that provides players with a special journal that updates its contents dynamically. Built with Fabric for Minecraft 1.20 to 1.20.4 and every version from 1.21 to 26.3.
 
 ## ✨ Features
 
@@ -26,6 +26,8 @@ Each release has one jar per range of Minecraft versions. The range is in the fi
 
 | Minecraft | Jar |
 |---|---|
+| 1.20 to 1.20.1 | `travelers-journal-<version>+mc1.20-1.20.1.jar` |
+| 1.20.2 to 1.20.4 | `travelers-journal-<version>+mc1.20.2-1.20.4.jar` |
 | 1.21 to 1.21.1 | `travelers-journal-<version>+mc1.21-1.21.1.jar` |
 | 1.21.2 to 1.21.4 | `travelers-journal-<version>+mc1.21.2-1.21.4.jar` |
 | 1.21.5 | `travelers-journal-<version>+mc1.21.5.jar` |
@@ -34,7 +36,7 @@ Each release has one jar per range of Minecraft versions. The range is in the fi
 | 26.1 to 26.2 | `travelers-journal-<version>+mc26.1-26.2.jar` |
 | 26.3 | `travelers-journal-<version>+mc26.3.jar` |
 
-The 1.21.x jars need Java 21 or newer, and the 26.x jars need Java 25, as Minecraft itself does. The in-game manager uses Minecraft's server dialogs, which start at 1.21.6; on 1.21 to 1.21.5 the journals are edited as files.
+The 1.20.x jars need Java 17 or newer, the 1.21.x jars Java 21 and the 26.x jars Java 25, as Minecraft itself does. There is no jar for 1.20.5 or 1.20.6. The in-game manager uses Minecraft's server dialogs, which start at 1.21.6; on 1.20 to 1.21.5 the journals are edited as files.
 
 ### Upgrading
 
@@ -44,6 +46,8 @@ Replace the old jar in your `mods` folder with the new one and restart. The file
 - players already on the join list, who do not get a second copy.
 
 Your journal becomes the journal `default`, still read from those same files. Nothing is moved or rewritten, so going back to an earlier release finds everything where it left it. Every release is tested upgrading from each earlier release.
+
+Moving your world to a newer Minecraft keeps the journals too. Up to 1.20.4 a book is stored differently, and Minecraft converts it when the world opens on a later version; each copy still belongs to its journal and refreshes when used.
 
 ## ⌨️ Commands
 

@@ -3,20 +3,25 @@ package com.gbti.probe;
 import com.gbti.Journal;
 import com.gbti.JournalBook;
 import com.mojang.authlib.GameProfile;
+//? if >=1.20.2 <1.20.5 {
+/*import com.mojang.brigadier.exceptions.CommandSyntaxException;
+*///?}
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.Connection;
+//? if >=1.20.2 <1.20.5 {
+/*import net.minecraft.network.ConnectionProtocol;
+*///?}
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+//? if >=1.20.2 {
 import net.minecraft.server.network.CommonListenerCookie;
-import net.minecraft.server.network.Filterable;
+//?}
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.WrittenBookContent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -38,11 +43,27 @@ final class ProbeSupport {
         // GameProfile became a record in later authlib versions, so its getter is not used
         UUID uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(StandardCharsets.UTF_8));
         GameProfile profile = new GameProfile(uuid, name);
-        CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
-        ServerPlayer player = new ServerPlayer(server, server.overworld(), profile, cookie.clientInformation());
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
-        CHANNELS.put(uuid, new EmbeddedChannel(connection));
+        EmbeddedChannel channel = new EmbeddedChannel(connection);
+        CHANNELS.put(uuid, channel);
+        // From 1.20.2 to 1.20.4 a connection reads its protocol from the channel before sending
+        //? if >=1.20.2 <1.20.5 {
+        /*channel.attr(Connection.ATTRIBUTE_SERVERBOUND_PROTOCOL).set(ConnectionProtocol.PLAY.codec(PacketFlow.SERVERBOUND));
+        channel.attr(Connection.ATTRIBUTE_CLIENTBOUND_PROTOCOL).set(ConnectionProtocol.PLAY.codec(PacketFlow.CLIENTBOUND));
+        *///?}
+        // 1.20.2 added the login cookie, and 1.20.5 its transfer flag
+        //? if >=1.20.5 {
+        CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
+        //?} else if >=1.20.2 {
+        /*CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile);
+        *///?}
+        //? if >=1.20.2 {
+        ServerPlayer player = new ServerPlayer(server, server.overworld(), profile, cookie.clientInformation());
         server.getPlayerList().placeNewPlayer(connection, player, cookie);
+        //?} else {
+        /*ServerPlayer player = new ServerPlayer(server, server.overworld(), profile);
+        server.getPlayerList().placeNewPlayer(connection, player);
+        *///?}
         return player;
     }
 
@@ -57,7 +78,17 @@ final class ProbeSupport {
     }
 
     static void command(MinecraftServer server, CommandSourceStack source, String command) {
+        // performPrefixedCommand changed its return type in 1.20.3, so the probe for the jar that
+        // also covers 1.20.2 runs commands through Brigadier and reports a syntax error as the game does
+        //? if >=1.20.2 <1.20.5 {
+        /*try {
+            server.getCommands().getDispatcher().execute(command, source);
+        } catch (CommandSyntaxException e) {
+            source.sendFailure(Component.literal(e.getMessage()));
+        }
+        *///?} else {
         server.getCommands().performPrefixedCommand(source, command);
+        //?}
     }
 
     // What a command says back to the console, success and failure alike
@@ -116,18 +147,18 @@ final class ProbeSupport {
     }
 
     static String text(ItemStack book) {
-        WrittenBookContent content = book.get(DataComponents.WRITTEN_BOOK_CONTENT);
-        if (content == null) return "";
+        JournalBook.Contents contents = JournalBook.contents(book);
+        if (contents == null) return "";
         StringBuilder text = new StringBuilder();
-        for (Filterable<Component> page : content.pages()) {
-            text.append(page.raw().getString()).append('\n');
+        for (Component page : contents.pages()) {
+            text.append(page.getString()).append('\n');
         }
         return text.toString();
     }
 
     static String titleOf(ItemStack book) {
-        WrittenBookContent content = book.get(DataComponents.WRITTEN_BOOK_CONTENT);
-        return content == null ? "" : content.title().raw();
+        JournalBook.Contents contents = JournalBook.contents(book);
+        return contents == null ? "" : contents.title();
     }
 
     static String oneLine(String text) {

@@ -37,8 +37,15 @@ return InteractionResult.PASS;
 Whole features that a version lacks are left out by `build.gradle` instead: the in-game manager
 (`com/gbti/dialog/`, its mixin and `travelers_journal.mixins.json`) builds only for 1.21.6 and
 later, where Minecraft has server dialogs, and only those jars' `fabric.mod.json` lists the mixin.
+The probe's upgrade test (`UpgradeProbe`) builds only for 1.20.5 and later, because no release
+before 2.0.0 ran on an older version.
 
-You need JDK 25. It also builds the 1.21.x jars, which target Java 21.
+Before 1.20.5 a written book is NBT rather than item components. `JournalBook` holds every
+difference (`book`, `contents`, `taggedId`), so the rest of the mod and the probe read books the
+same way on every version.
+
+You need JDK 25. It also builds the 1.20.x jars, which target Java 17, and the 1.21.x jars, which
+target Java 21.
 
 1. Build every jar into `build/libs/`:
    ```bash
@@ -52,8 +59,8 @@ You need JDK 25. It also builds the 1.21.x jars, which target Java 21.
 
 ## Testing
 
-`scripts/test-matrix.sh` boots every jar on a real Fabric server for every Minecraft version from
-1.21 to 26.3, with the probe test mod in `src/probe` beside it. The probe joins mock players and
+`scripts/test-matrix.sh` boots every jar on a real Fabric server for Minecraft 1.20 to 1.20.4 and
+every version from 1.21 to 26.3, with the probe test mod in `src/probe` beside it. The probe joins mock players and
 checks, in phases:
 
 - `JournalProbe`: a new player gets the journal once, the text and formatting are right, reload
@@ -100,11 +107,28 @@ npm run test:upgrades
 EXTRA_PAST="/path/to/travelers-journal-1.2.6.17.jar" npm run test:upgrades
 ```
 
+### Worlds moving to a later Minecraft
+
+Minecraft converts a world's books from NBT to item components when a world from 1.20.4 or older
+opens on a later version. The world upgrade test checks that every journal survives it. For each
+jar whose range ends before 1.20.5:
+
+1. It boots that jar on the newest version in its range, with a new world, and gives a player the
+   `default` journal and a named one.
+2. It opens the same world and config on 1.21.1, with the 1.21.1 jar.
+3. `WorldUpgradeProbe` checks that both copies still belong to their journals, kept their pages,
+   and refresh when used.
+
+```bash
+npm run test:worlds
+```
+
 ## Releasing
 
 1. Set `mod_version` in `gradle.properties`, add a `## [<version>]` section to
    `.product/changelog.md`, and commit both.
-2. `npm run release:stage` builds every jar, runs the test matrix and the upgrade test, and stages
+2. `npm run release:stage` builds every jar, runs the test matrix, the upgrade test and the world
+   upgrade test, and stages
    the jars, release notes and checksums in `build/release/<version>/`.
 3. `npm run release:publish -- --dry-run` shows what publishing will do. Without `--dry-run` it tags
    the commit, pushes, creates the GitHub release and uploads to Modrinth and CurseForge when

@@ -112,7 +112,7 @@ public class StringUtils {
             } else if(isColoring) color += currentChar;
             else if(metaCharacter) {
                 metaCharacter = false;
-                formatList.getLast().asterisks(asterisks).underlined(underlined).color(color).addChar(currentChar);
+                formatList.get(formatList.size() - 1).asterisks(asterisks).underlined(underlined).color(color).addChar(currentChar);
             }
             else if(currentChar == '\\') {
                 metaCharacter = true;
@@ -121,11 +121,11 @@ public class StringUtils {
                 if (line.length() > i + 1) {
                     if (line.charAt(i + 1) == '*') {
                         asterisks = asterisks >= 2 ? asterisks - 2 : asterisks + 2;
-                        if(!formatList.getLast().getContent().isEmpty()) formatList.add(new FormattedString(""));
+                        if(!formatList.get(formatList.size() - 1).getContent().isEmpty()) formatList.add(new FormattedString(""));
                         i++;
                     } else {
                         asterisks = (asterisks == 1 || asterisks == 3) ? asterisks - 1 : asterisks + 1;
-                        if(!formatList.getLast().getContent().isEmpty()) formatList.add(new FormattedString(""));
+                        if(!formatList.get(formatList.size() - 1).getContent().isEmpty()) formatList.add(new FormattedString(""));
                     }
                 }
             } else if(currentChar == '_') {
@@ -146,10 +146,10 @@ public class StringUtils {
                     isColoring = true;
                 }
             } else if(currentChar == '-' && i == 0 && line.length() > 1 && line.charAt(1) == ' ') {
-                formatList.getLast().asterisks(asterisks).underlined(underlined).color(color).addChar('・');
+                formatList.get(formatList.size() - 1).asterisks(asterisks).underlined(underlined).color(color).addChar('・');
             }
             else {
-                formatList.getLast().asterisks(asterisks).underlined(underlined).color(color).addChar(currentChar);
+                formatList.get(formatList.size() - 1).asterisks(asterisks).underlined(underlined).color(color).addChar(currentChar);
             }
         }
         return formatList.stream().filter(elem -> !elem.getContent().isEmpty()).toList();

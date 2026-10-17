@@ -68,6 +68,11 @@ if (dialogs) {
 	tasks.named('compileJava') { exclude 'com/gbti/dialog/**', 'com/gbti/mixin/**' }
 	tasks.named('compileProbeJava') { exclude 'com/gbti/probe/DialogProbe.java' }
 }
+// No release before 2.0.0 ran below 1.20.5, so those probe jars leave out the upgrade test, whose
+// helpers build books the 1.20.5 way to stay independent of the jar under test
+if (sc.current.parsed.matches('<1.20.5')) {
+	tasks.named('compileProbeJava') { exclude 'com/gbti/probe/UpgradeProbe.java' }
+}
 
 jar {
 	from("LICENSE") {

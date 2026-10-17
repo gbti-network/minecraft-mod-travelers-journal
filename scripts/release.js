@@ -32,6 +32,9 @@ const CURSEFORGE_PROJECT = 1743974;
 const USER_AGENT = 'gbti-network/minecraft-mod-travelers-journal (release script)';
 // Every release before 1.3.0 was built for 1.21.1, so that is where existing servers upgrade from
 const UPGRADE_FROM_MINECRAFT = '1.21.1';
+// A server on 1.20.4 or older that moves to a later Minecraft finds its books turned from NBT into
+// item components; each such jar's world is opened here, with the jar that covers it
+const WORLD_UPGRADE_TO = '1.21.1';
 
 function fail(message) {
     console.error(`release: ${message}`);
@@ -68,6 +71,17 @@ function changelog(version) {
     if (start < 0) return '';
     const end = lines.findIndex((line, i) => i > start && line.startsWith('## ['));
     return lines.slice(start + 1, end < 0 ? undefined : end).join('\n').trim();
+}
+
+// Compares Minecraft versions part by part, so 1.20.10 would come after 1.20.4
+function mcBefore(a, b) {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+        if (d) return d < 0;
+    }
+    return false;
 }
 
 function versionRange(gameVersions) {
@@ -116,6 +130,16 @@ function stage() {
     run(path.join(SCRIPTS, 'test-matrix.sh'), ['upgrades', path.join(matrixDir, 'upgrades'),
         path.join(libs, upgradeTarget.file), path.join(libs, upgradeTarget.file.replace(/\.jar$/, '-probe.jar')),
         UPGRADE_FROM_MINECRAFT]);
+
+    const probeOf = e => path.join(libs, e.file.replace(/\.jar$/, '-probe.jar'));
+    const olderWorlds = entries.filter(e => mcBefore(e.game_versions.at(-1), '1.20.5'));
+    if (olderWorlds.length) {
+        const worldTarget = entries.find(e => e.game_versions.includes(WORLD_UPGRADE_TO))
+            ?? fail(`no jar passed on Minecraft ${WORLD_UPGRADE_TO}, where older worlds are opened`);
+        run(path.join(SCRIPTS, 'test-matrix.sh'), ['world-upgrades', path.join(matrixDir, 'world-upgrades'),
+            path.join(libs, worldTarget.file), probeOf(worldTarget), WORLD_UPGRADE_TO,
+            ...olderWorlds.flatMap(e => [path.join(libs, e.file), probeOf(e), e.game_versions.at(-1)])]);
+    }
 
     const table = ['| Minecraft | File |', '|---|---|',
         ...entries.map(e => `| ${versionRange(e.game_versions)} | \`${e.file}\` |`)].join('\n');

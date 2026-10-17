@@ -18,6 +18,9 @@
 #   test-matrix.sh libs <outdir> <dir>                 matrix of every jar in <dir> with its -probe.jar
 #   test-matrix.sh upgrade <old-jar> <new-jar> <probe> <version> [config-dir]   one upgrade cell
 #   test-matrix.sh upgrades <outdir> <new-jar> <probe> [version]   every past release, upgraded
+#   test-matrix.sh world-upgrade <old-jar> <old-probe> <old-version> <new-jar> <new-probe> <new-version>
+#                                                      one world moved to a later Minecraft
+#   test-matrix.sh world-upgrades <outdir> <new-jar> <new-probe> <new-version> <old-jar> <old-probe> <old-version>...
 #
 # --widen tests a copy of the jar whose minecraft range is "*", to learn whether its code runs on
 # a version its range excludes. A matrix passes when no cell is FAIL, CRASH or ENV and every
@@ -29,6 +32,10 @@
 # lists for [version] (default 1.21.1, where every release before 1.3.0 ran), plus any jars named
 # in EXTRA_PAST, and upgrades each twice: with its own default config and with
 # src/probe/fixtures/past-install.
+#
+# A world upgrade cell is two boots on two versions: the old version's jar on a new world, then
+# the same world and config opened on a later version with its jar, as a server moving to a newer
+# Minecraft does. WorldUpgradeProbe.java holds the checks.
 #
 # Linux only (WSL is fine). Servers live under ~/.cache/travelers-boot, on the
 # Linux filesystem, in offline mode on a free localhost port. The EULA is copied from EULA_FROM,
@@ -48,7 +55,7 @@ PROBE_TIMEOUT=${PROBE_TIMEOUT:-60}
 PARALLEL=${PARALLEL:-4}
 # How many checks must pass is not set here: each probe run announces it on its START line
 # ("expect=N"), because the probe is built per jar and the 1.21.6+ jars carry the dialog checks.
-ALL_VERSIONS=(1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10 1.21.11
+ALL_VERSIONS=(1.20 1.20.1 1.20.2 1.20.3 1.20.4 1.21 1.21.1 1.21.2 1.21.3 1.21.4 1.21.5 1.21.6 1.21.7 1.21.8 1.21.9 1.21.10 1.21.11
 	26.1 26.1.1 26.1.2 26.2 26.3)
 ERRORS='InvalidMixinException|MixinApplyError|MixinTransformerError|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|AbstractMethodError|BootstrapMethodError|IncompatibleClassChangeError|ClassCastException|Exception in thread|\[TJ\] (An error|Failed)|TJ-PROBE\] stack trace'
 
@@ -266,6 +273,84 @@ upgrade_one() { # old-jar new-jar probe version [config-dir]
 	result PASS "both boots clean: ${checked[0]} checks on the old jar, ${checked[1]} after the upgrade"
 }
 
+# Boots <dir> until the probe is done and prints nothing if it ran clean, else one line naming
+# the problem, prefixed with <phase>
+probe_boot() { # dir log phase
+	local rc=0 problems
+	boot "$1" "$2" "until:[TJ-PROBE] DONE" "sleep:1" || rc=$?
+	if grep -qE 'Incompatible mods? (found|set)' "$2"; then
+		echo "REFUSED	$3: $(grep -m1 -E 'requires' "$2" | sed 's/^[[:space:]]*- //' | oneline)"
+	elif (( rc == 1 )); then
+		echo "CRASH	$3: never ready: $(grep -m1 -E "$ERRORS" "$2" | oneline)"
+	elif (( rc == 2 )); then
+		echo "CRASH	$3: crashed after ready: $(grep -m1 -E "$ERRORS" "$2" | oneline)"
+	else
+		problems=$(probe_problems "$2" "$1")
+		[[ $problems ]] && echo "FAIL	$3: $problems"
+	fi
+	return 0
+}
+
+world_upgrade_one() { # old-jar old-probe old-version new-jar new-probe new-version
+	local old=$1 oldprobe=$2 ov=$3 new=$4 newprobe=$5 nv=$6 start=$SECONDS
+	local over nver label tag before after problem v
+	IFS=$'\t' read -r _ over _ < <(helper modinfo "$old")
+	IFS=$'\t' read -r _ nver _ < <(helper modinfo "$new")
+	label="world from $ov ($over) to $nv ($nver)"
+	tag="world-$ov-to-$nv"
+	result() { printf '%s\t%s\t%s\t%s\t%s\n' "$label" "$nv" "$1" "$((SECONDS - start))" "$2"; }
+	for v in "$ov" "$nv"; do
+		[[ -f $CACHE/mc/$v/control.ok ]] || { result ENV "control boot failed or not fetched: $CACHE/mc/$v/control.log"; return; }
+	done
+	before=$(workdir "$ov" journal-world)
+	mkdir -p "$before/config"
+	echo world-before > "$before/config/travelers-journal-probe.txt"
+	cp "$old" "$oldprobe" "$before/mods/"
+	problem=$(probe_boot "$before" "$before/run.log" before)
+	# The later version opens the same world and config, as a server moving versions does
+	after=$(workdir "$nv" journal-world)
+	if [[ -z $problem ]]; then
+		cp -r "$before/world" "$after/"
+		cp -r "$before/config" "$after/"
+		echo world-after > "$after/config/travelers-journal-probe.txt"
+		cp "$new" "$newprobe" "$after/mods/"
+		problem=$(probe_boot "$after" "$after/run.log" after)
+	fi
+	if [[ ${TB_OUT:-} ]]; then
+		mkdir -p "$TB_OUT/logs"
+		cp "$before/run.log" "$TB_OUT/logs/$tag-before.log"
+		[[ -f $after/run.log ]] && cp "$after/run.log" "$TB_OUT/logs/$tag-after.log"
+	fi
+	if [[ $problem ]]; then
+		result "${problem%%	*}" "${problem#*	}"
+		return
+	fi
+	result PASS "both boots clean: $(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+' "$before/run.log" | grep -oE '[0-9]+$') checks on $ov, $(grep -m1 -oE '\[TJ-PROBE\] DONE pass=[0-9]+' "$after/run.log" | grep -oE '[0-9]+$') on $nv"
+}
+
+world_upgrades() { # outdir new-jar new-probe new-version old-jar old-probe old-version...
+	local out=$1 new=$2 newprobe=$3 nv=$4 bad
+	shift 4
+	(( $# >= 3 && $# % 3 == 0 )) || die "world-upgrades needs <old-jar> <old-probe> <old-version> triples"
+	mkdir -p "$out"
+	export TB_OUT=$out
+	: > "$out/world-upgrades.raw.tsv"
+	while (( $# )); do
+		fetch_one "$3" >> "$out/fetch.txt"
+		world_upgrade_one "$1" "$2" "$3" "$new" "$newprobe" "$nv" >> "$out/world-upgrades.raw.tsv"
+		shift 3
+	done
+	fetch_one "$nv" >> "$out/fetch.txt"
+	sort -t$'\t' -k1,1V "$out/world-upgrades.raw.tsv" > "$out/world-upgrades.tsv"
+	cut -f1-3 "$out/world-upgrades.tsv"
+	bad=$(awk -F'\t' '$3 != "PASS"' "$out/world-upgrades.tsv")
+	if [[ $bad ]]; then
+		printf 'problems:\n%s\nworld upgrades: FAILED\n' "$bad"
+		return 1
+	fi
+	echo "world upgrades: passed, $(wc -l < "$out/world-upgrades.tsv") cells"
+}
+
 upgrades() { # outdir new-jar probe [version]
 	local out=$1 new=$2 probe=$3 v=${4:-1.21.1} nver jar bad
 	local -a past
@@ -341,5 +426,7 @@ case ${1:-} in
 	libs) shift; libs "$@" ;;
 	upgrade) shift; upgrade_one "$@" ;;
 	upgrades) shift; upgrades "$@" ;;
-	*) sed -n '2,36p' "$0" ;;
+	world-upgrade) shift; world_upgrade_one "$@" ;;
+	world-upgrades) shift; world_upgrades "$@" ;;
+	*) sed -n '2,43p' "$0" ;;
 esac

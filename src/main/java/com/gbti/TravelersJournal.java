@@ -50,8 +50,7 @@ public class TravelersJournal implements ModInitializer {
             if (entity instanceof ServerPlayer player) {
                 String uuid = player.getStringUUID();
                 for (Journal journal : Journals.all()) {
-                    if (journal.giveOnJoin() && !journal.joinList().contains(uuid)
-                            && !player.getInventory().contains(stack -> JournalBook.journalOf(stack) == journal)) {
+                    if (journal.giveOnJoin() && !journal.joinList().contains(uuid) && !carries(player, journal)) {
                         give(player, journal);
                         Journals.markGiven(journal, uuid);
                     }
@@ -73,6 +72,16 @@ public class TravelersJournal implements ModInitializer {
             /*return InteractionResultHolder.pass(player.getItemInHand(hand));
             *///?}
         });
+    }
+
+    // Every slot, armour and offhand included; Inventory.contains(Predicate) only exists from 1.20.5
+    private static boolean carries(ServerPlayer player, Journal journal) {
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            if (JournalBook.journalOf(player.getInventory().getItem(i)) == journal) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void giveBookToPlayer(ServerPlayer player) {

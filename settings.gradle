@@ -25,7 +25,7 @@ stonecutter {
 	create(getRootProject()) {
 		// One node per released jar. versions/<node>/gradle.properties holds the Minecraft version
 		// the node builds against and the range of versions its jar declares.
-		versions '1.21.1', '1.21.2', '1.21.5', '1.21.6', '1.21.11', '26.1', '26.3'
+		versions '1.20.1', '1.20.4', '1.21.1', '1.21.2', '1.21.5', '1.21.6', '1.21.11', '26.1', '26.3'
 		// The node whose state the committed src/ is in. Keep it equal to stonecutter.active.
 		vcsVersion = '26.3'
 	}
