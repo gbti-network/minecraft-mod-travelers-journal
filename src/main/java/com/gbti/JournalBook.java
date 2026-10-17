@@ -147,7 +147,7 @@ public final class JournalBook {
     /**
      * The journal a book is a copy of, or null. A book carrying an id belongs to that journal, and
      * to none once it is deleted, so it stays an ordinary book. A book without one comes from a
-     * release before 1.3.0 and is matched as those releases did: by the default journal's title or
+     * release before 2.0.0 and is matched as those releases did: by the default journal's title or
      * one of its legacy titles.
      */
     public static Journal journalOf(ItemStack stack) {
