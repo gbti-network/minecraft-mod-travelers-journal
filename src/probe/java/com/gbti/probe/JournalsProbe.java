@@ -3,6 +3,7 @@ package com.gbti.probe;
 import com.gbti.Journal;
 import com.gbti.JournalBook;
 import com.gbti.Journals;
+import com.gbti.utils.BookFont;
 import com.mojang.brigadier.tree.CommandNode;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.component.DataComponents;
@@ -35,7 +36,7 @@ import static com.gbti.probe.ProbeSupport.use;
  * marked, tagged with their id, listed, deleted with a backup, and the default journal kept safe.
  */
 final class JournalsProbe {
-    static final int CHECKS = 17;
+    static final int CHECKS = 19;
     private static final Path ROOT = Path.of("config/travelers-journal");
     private static final Path CONFIG = ROOT.resolve("config.txt");
     private static final Path JOIN_LIST = ROOT.resolve("joinlist.txt");
@@ -154,7 +155,32 @@ final class JournalsProbe {
                 && config.contains("title=Renamed Journal") && Files.exists(ROOT.resolve("config.txt.bak")), "config.txt: " + oneLine(config));
         Journals.save(Journals.defaultJournal(), "Traveler's Journal", standard.author(), true, null);
 
+        // Pages break where the book wraps them: no page holds more than the book shows, and no
+        // text is lost. Before 1.3.0 this whole section was one page whose last lines were hidden.
+        String paragraph = "This paragraph is long enough that the book wraps it over several lines, so the page fills before its fourteenth line.";
+        List<String> crowded = new ArrayList<>(List.of(paragraph));
+        for (int i = 1; i <= 13; i++) crowded.add("Line " + i);
+        List<Component> crowdedPages = pagesOf(Journals.create("probe-pages", "Pages", "Probe", false, String.join("\n", crowded)));
+        String crowdedText = String.join("\n", crowdedPages.stream().map(Component::getString).toList());
+        checks.check("pages-follow-wrapping", crowdedPages.size() == 2
+                && crowdedPages.stream().allMatch(page -> BookFont.bookLines(page) <= BookFont.PAGE_LINES)
+                && crowdedText.contains("fourteenth line.") && crowdedText.contains("Line 13"),
+                "pages " + crowdedPages.size() + ", book lines " + crowdedPages.stream().map(BookFont::bookLines).toList());
+
+        // A paragraph longer than a page carries on at the top of the next one
+        String longParagraph = "Words keep coming in this one very long paragraph. ".repeat(30).trim();
+        List<Component> longPages = pagesOf(Journals.create("probe-paragraph", "Paragraph", "Probe", false, longParagraph));
+        String rejoined = String.join(" ", longPages.stream().map(Component::getString).toList());
+        checks.check("long-paragraph-continues", longPages.size() >= 2 && BookFont.bookLines(longPages.get(0)) == BookFont.PAGE_LINES
+                && rejoined.equals(longParagraph), "pages " + longPages.size() + ", book lines "
+                + longPages.stream().map(BookFont::bookLines).toList() + ", text kept " + rejoined.equals(longParagraph));
+
         server.getPlayerList().remove(bob);
+    }
+
+    private static List<Component> pagesOf(Journal journal) {
+        WrittenBookContent content = JournalBook.create(journal).get(DataComponents.WRITTEN_BOOK_CONTENT);
+        return content == null ? List.of() : content.pages().stream().map(Filterable::raw).toList();
     }
 
     private static boolean backupHas(String file) throws Exception {

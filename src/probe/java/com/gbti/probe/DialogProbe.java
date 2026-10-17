@@ -96,7 +96,8 @@ final class DialogProbe {
                 && body().contains("Page two") && Files.readString(MADE.resolve("journal.md")).equals(text), "shown " + describe());
 
         // The client centres dialog text, so each page line is wrapped at the book's width and
-        // padded to it; past the book's 14 lines a page says what will not show
+        // padded to it. A section past the book's 14 lines now carries on on a second page, so
+        // nothing is cut off
         String paragraph = "A long paragraph that the book wraps over several lines, word by word, the way a player reads it.";
         String crowded = paragraph + "\n" + String.join("\n", java.util.Collections.nCopies(13, "Short line"));
         click("preview", form("probe-dialog", "Saved by dialog", "Probe", true, crowded));
@@ -104,7 +105,8 @@ final class DialogProbe {
                 ? BookLayout.lineWidths(page.contents()) : List.of();
         boolean padded = widths.size() == 1 + BookLayout.PAGE_LINES
                 && widths.stream().allMatch(width -> width >= BookLayout.PAGE_WIDTH - 4 && width <= BookLayout.PAGE_WIDTH);
-        checks.check("dialog-preview-layout", padded && body().contains("will not show"), "line widths " + widths + ", shown " + describe());
+        checks.check("dialog-preview-layout", padded && body().contains("Page 2 of 2") && !body().contains("will not show"),
+                "line widths " + widths + ", shown " + describe());
 
         // The default journal is switched off, never deleted, so its editor has no Delete
         click("edit", form(Journal.DEFAULT_ID));

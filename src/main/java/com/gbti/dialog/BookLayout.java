@@ -1,5 +1,6 @@
 package com.gbti.dialog;
 
+import com.gbti.utils.BookFont;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -12,16 +13,12 @@ import java.util.Optional;
 /**
  * Lays a journal page out the way the book screen does, for the preview dialog. The client centres
  * every line of dialog text (DialogBodyHandlers builds plain messages centred), and a server cannot
- * change that. So each line is wrapped where the book wraps it, at 114 px, and padded with spaces
- * to the page's full width: a centred line that fills the page sits flush left.
- *
- * <p>Widths are the vanilla font's. With Force Unicode Font or a resource pack's own font, lines
- * can sit a few pixels uneven, but nothing is lost.</p>
+ * change that. So each line is wrapped where the book wraps it (BookFont) and padded with spaces to
+ * the page's full width: a centred line that fills the page sits flush left.
  */
 public final class BookLayout {
-    // BookViewScreen: font.split(page, 114), and 128 / 9 lines shown
-    public static final int PAGE_WIDTH = 114;
-    public static final int PAGE_LINES = 14;
+    public static final int PAGE_WIDTH = BookFont.PAGE_WIDTH;
+    public static final int PAGE_LINES = BookFont.PAGE_LINES;
     // FocusableTextWidget keeps 4 px of padding on each side of a plain message
     static final int MESSAGE_WIDTH = PAGE_WIDTH + 8;
     // One pixel of slack, so a width the table gets wrong by one never wraps the padding
@@ -85,25 +82,17 @@ public final class BookLayout {
         return lines;
     }
 
-    // The book's word wrap: break at the last space that fits and drop it, or mid-word when none does
     private static List<List<Glyph>> wrap(List<Glyph> line) {
-        List<List<Glyph>> out = new ArrayList<>();
-        int start = 0;
-        int width = 0;
-        int lastSpace = -1;
+        int[] advances = new int[line.size()];
+        boolean[] spaces = new boolean[line.size()];
         for (int i = 0; i < line.size(); i++) {
-            Glyph glyph = line.get(i);
-            if (glyph.codePoint() == ' ') lastSpace = i;
-            width += advance(glyph);
-            if (width > PAGE_WIDTH) {
-                int end = lastSpace > start ? lastSpace : Math.max(i, start + 1);
-                out.add(line.subList(start, end));
-                start = end < line.size() && line.get(end).codePoint() == ' ' ? end + 1 : end;
-                lastSpace = -1;
-                width = width(line.subList(start, i + 1));
-            }
+            advances[i] = advance(line.get(i));
+            spaces[i] = line.get(i).codePoint() == ' ';
         }
-        out.add(line.subList(Math.min(start, line.size()), line.size()));
+        List<List<Glyph>> out = new ArrayList<>();
+        for (int[] range : BookFont.wrap(advances, spaces)) {
+            out.add(line.subList(range[0], range[1]));
+        }
         return out;
     }
 
@@ -142,31 +131,7 @@ public final class BookLayout {
         return width;
     }
 
-    // The glyph's width plus one pixel of spacing, and one more for bold
     private static int advance(Glyph glyph) {
-        return glyphWidth(glyph.codePoint()) + 1 + (glyph.style().isBold() ? 1 : 0);
-    }
-
-    private static int glyphWidth(int c) {
-        if (c >= 'A' && c <= 'Z') return c == 'I' ? 3 : 5;
-        if (c >= 'a' && c <= 'z') {
-            return switch (c) {
-                case 'i', 'l' -> 1;
-                case 'f', 'k', 't' -> 4;
-                default -> 5;
-            };
-        }
-        if (c >= '0' && c <= '9') return 5;
-        return switch (c) {
-            case ' ' -> 3;
-            case '!', '.', ',', ':', ';', '\'', '|' -> 1;
-            case '`' -> 2;
-            case '"', '[', ']' -> 3;
-            case '(', ')', '{', '}', '<', '>' -> 4;
-            case '@', '~' -> 6;
-            // the mod's list bullet, measured on a 26.2 client
-            case '・' -> 8;
-            default -> c >= 0x2E80 ? 8 : 5;
-        };
+        return BookFont.advance(glyph.codePoint(), glyph.style().isBold());
     }
 }

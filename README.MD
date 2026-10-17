@@ -109,7 +109,7 @@ Create or edit `config/travelers-journal/travelers_journal.md` (or a journal's `
   - `dark_red`, `dark_purple`, `gold`, `gray`
   - `dark_gray`, `blue`, `green`, `aqua`
   - `red`, `light_purple`, `yellow`, `white`
-- Page breaks: Use `[page]` to start a new page
+- Page breaks: Use `[page]` to start a new page. A page also ends when it fills the 14 lines the book shows, counting lines as the book wraps them, and a line too long for what is left carries on at the top of the next page.
 
 ### 📝 Preview Your Journal
 

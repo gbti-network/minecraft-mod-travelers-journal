@@ -39,6 +39,15 @@ public class FormattedString {
         this.content = this.content + suffix;
     }
 
+    // An empty run with this one's formatting, for splitting a line where a page breaks
+    public FormattedString emptyCopy() {
+        return new FormattedString("").asterisks(asterisks).underlined(underlined).color(color);
+    }
+
+    public void addCodePoint(int codePoint) {
+        this.content = this.content + Character.toString(codePoint);
+    }
+
     public int getAsterisks() {
         return asterisks;
     }
